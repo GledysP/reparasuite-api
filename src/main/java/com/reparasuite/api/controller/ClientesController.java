@@ -30,4 +30,14 @@ public class ClientesController {
   public ClienteResumenDto obtener(@PathVariable String id) {
     return service.obtener(UUID.fromString(id));
   }
+
+  // ✅ NUEVO: GET /api/v1/clientes/{id}/ordenes-trabajo
+  @GetMapping("/{id}/ordenes-trabajo")
+  public ApiListaResponse<OtClienteListaItemDto> listarOrdenesTrabajo(
+      @PathVariable String id,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size
+  ) {
+    return service.listarOrdenesTrabajo(UUID.fromString(id), page, size);
+  }
 }

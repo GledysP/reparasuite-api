@@ -176,7 +176,15 @@ public class OrdenesTrabajoService {
 
     ClienteResumenDto clienteDto = new ClienteResumenDto(c.getId(), c.getNombre(), c.getTelefono(), c.getEmail());
     UsuarioResumenDto tecnicoDto = tec == null ? null :
-      new UsuarioResumenDto(tec.getId(), tec.getNombre(), tec.getUsuario(), tec.getRol().name(), tec.isActivo());
+    	  new UsuarioResumenDto(
+    	      tec.getId(),
+    	      tec.getNombre(),
+    	      tec.getUsuario(),
+    	      tec.getEmail(),
+    	      tec.getRol().name(),
+    	      tec.isActivo()
+    	  );
+
 
     return new OtDetalleDto(
       ot.getId(),

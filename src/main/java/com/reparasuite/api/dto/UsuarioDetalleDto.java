@@ -2,7 +2,7 @@ package com.reparasuite.api.dto;
 
 import java.util.UUID;
 
-public record UsuarioResumenDto(
+public record UsuarioDetalleDto(
     UUID id,
     String nombre,
     String usuario,

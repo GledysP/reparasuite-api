@@ -65,6 +65,14 @@ public class AuthService {
   }
 
   private UsuarioResumenDto toDto(Usuario u) {
-    return new UsuarioResumenDto(u.getId(), u.getNombre(), u.getUsuario(), u.getRol().name(), u.isActivo());
-  }
+	  return new UsuarioResumenDto(
+	      u.getId(),
+	      u.getNombre(),
+	      u.getUsuario(),
+	      u.getEmail(),
+	      u.getRol().name(),
+	      u.isActivo()
+	  );
+	}
+
 }

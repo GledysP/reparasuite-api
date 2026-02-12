@@ -18,6 +18,10 @@ public class Usuario {
   @Column(nullable = false, unique = true)
   private String usuario;
 
+  // ✅ NUEVO
+  @Column(nullable = false, unique = true)
+  private String email;
+
   @Column(name = "password_hash", nullable = false)
   private String passwordHash;
 
@@ -36,12 +40,14 @@ public class Usuario {
   public UUID getId() { return id; }
   public String getNombre() { return nombre; }
   public String getUsuario() { return usuario; }
+  public String getEmail() { return email; }
   public String getPasswordHash() { return passwordHash; }
   public RolUsuario getRol() { return rol; }
   public boolean isActivo() { return activo; }
 
   public void setNombre(String nombre) { this.nombre = nombre; }
   public void setUsuario(String usuario) { this.usuario = usuario; }
+  public void setEmail(String email) { this.email = email; }
   public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
   public void setRol(RolUsuario rol) { this.rol = rol; }
   public void setActivo(boolean activo) { this.activo = activo; }
