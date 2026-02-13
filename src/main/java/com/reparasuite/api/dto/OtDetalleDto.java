@@ -18,6 +18,7 @@ public record OtDetalleDto(
     String notasAcceso,
     List<NotaDto> notas,
     List<FotoDto> fotos,
+    List<HistorialItemDto> historial,  // ✅ NUEVO
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
 ) { }

@@ -8,7 +8,11 @@ import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.reparasuite.api.dto.*;
@@ -24,6 +28,7 @@ public class OrdenesTrabajoService {
   private final NotaOtRepo notaRepo;
   private final FotoOtRepo fotoRepo;
   private final TallerRepo tallerRepo;
+  private final HistorialOtRepo historialRepo;
 
   @Value("${reparasuite.upload-dir}")
   private String uploadDir;
@@ -34,7 +39,8 @@ public class OrdenesTrabajoService {
       UsuarioRepo usuarioRepo,
       NotaOtRepo notaRepo,
       FotoOtRepo fotoRepo,
-      TallerRepo tallerRepo
+      TallerRepo tallerRepo,
+      HistorialOtRepo historialRepo
   ) {
     this.otRepo = otRepo;
     this.clienteRepo = clienteRepo;
@@ -42,6 +48,7 @@ public class OrdenesTrabajoService {
     this.notaRepo = notaRepo;
     this.fotoRepo = fotoRepo;
     this.tallerRepo = tallerRepo;
+    this.historialRepo = historialRepo;
   }
 
   public ApiListaResponse<OtListaItemDto> listar(String query, int page, int size) {
@@ -69,11 +76,22 @@ public class OrdenesTrabajoService {
     List<FotoDto> fotos = fotoRepo.findByOt_IdOrderByCreatedAtDesc(id)
         .stream().map(f -> new FotoDto(f.getId(), f.getUrl(), f.getCreatedAt())).toList();
 
-    return toDetalle(ot, notas, fotos);
+    // ✅ Historial cronológico (ASC)
+    List<HistorialItemDto> historial = historialRepo.findByOt_IdOrderByFechaAsc(id).stream()
+        .map(h -> new HistorialItemDto(
+            h.getFecha(),
+            h.getEvento().name(),
+            h.getDescripcion(),
+            new HistorialUsuarioDto(h.getUsuario().getNombre())
+        ))
+        .toList();
+
+    return toDetalle(ot, notas, fotos, historial);
   }
 
   public record CrearResponse(UUID id) {}
 
+  @Transactional
   public CrearResponse crear(OtCrearRequest req) {
     Cliente cliente;
 
@@ -95,12 +113,15 @@ public class OrdenesTrabajoService {
     Taller t = tallerRepo.findById(1L).orElseThrow();
     String codigo = generarCodigo(t.getPrefijoOt());
 
+    TipoOt tipo = TipoOt.valueOf(req.tipo());
+    PrioridadOt prioridad = PrioridadOt.valueOf(req.prioridad());
+
     OrdenTrabajo ot = new OrdenTrabajo();
     ot.setCodigo(codigo);
     ot.setCliente(cliente);
     ot.setTecnico(tecnico);
-    ot.setTipo(TipoOt.valueOf(req.tipo()));
-    ot.setPrioridad(PrioridadOt.valueOf(req.prioridad()));
+    ot.setTipo(tipo);
+    ot.setPrioridad(prioridad);
     ot.setDescripcion(req.descripcion());
     ot.setEstado(EstadoOt.RECIBIDA);
 
@@ -111,23 +132,39 @@ public class OrdenesTrabajoService {
     ot.setNotasAcceso(req.notasAcceso());
 
     ot = otRepo.save(ot);
+
+    // ✅ OT_CREADA enriquecido
+    String desc = "Orden creada (" + tipo.name() + "/" + prioridad.name() + ") para " +
+        cliente.getNombre() + ": " + recortar(req.descripcion(), 200);
+    registrarEvento(ot, EventoHistorialOt.OT_CREADA, desc);
+
     return new CrearResponse(ot.getId());
   }
 
+  @Transactional
   public void cambiarEstado(UUID id, String estado) {
     OrdenTrabajo ot = otRepo.findById(id).orElseThrow();
-    ot.setEstado(EstadoOt.valueOf(estado));
+    EstadoOt nuevo = EstadoOt.valueOf(estado);
+
+    ot.setEstado(nuevo);
     otRepo.save(ot);
+
+    registrarEvento(ot, EventoHistorialOt.CAMBIO_ESTADO, "Estado actualizado a " + nuevo.name());
   }
 
+  @Transactional
   public void anadirNota(UUID id, String contenido) {
     OrdenTrabajo ot = otRepo.findById(id).orElseThrow();
+
     NotaOt n = new NotaOt();
     n.setOt(ot);
     n.setContenido(contenido);
     notaRepo.save(n);
+
+    registrarEvento(ot, EventoHistorialOt.NOTA_AGREGADA, "Se añadió una nueva nota interna");
   }
 
+  @Transactional
   public FotoDto subirFoto(UUID id, MultipartFile file) throws IOException {
     OrdenTrabajo ot = otRepo.findById(id).orElseThrow();
 
@@ -143,7 +180,43 @@ public class OrdenesTrabajoService {
     f.setUrl(url);
     f = fotoRepo.save(f);
 
+    String original = (file.getOriginalFilename() != null && !file.getOriginalFilename().isBlank())
+        ? file.getOriginalFilename()
+        : filename;
+
+    // ✅ FOTO_SUBIDA con trazabilidad (nombre + url)
+    registrarEvento(ot, EventoHistorialOt.FOTO_SUBIDA, "Archivo subido: " + original + " (" + url + ")");
+
     return new FotoDto(f.getId(), f.getUrl(), f.getCreatedAt());
+  }
+
+  // -------------------------
+  // Helpers (auditoría y mapeos)
+  // -------------------------
+
+  private Usuario usuarioAutenticado() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth instanceof JwtAuthenticationToken jwtAuth) {
+      String subject = jwtAuth.getToken().getSubject(); // UUID del usuario autenticado
+      return usuarioRepo.findById(UUID.fromString(subject)).orElseThrow();
+    }
+    throw new RuntimeException("No autenticado");
+  }
+
+  private void registrarEvento(OrdenTrabajo ot, EventoHistorialOt evento, String descripcion) {
+    HistorialOt h = new HistorialOt();
+    h.setOt(ot);
+    h.setEvento(evento);
+    h.setDescripcion(descripcion);
+    h.setUsuario(usuarioAutenticado());
+    historialRepo.save(h);
+  }
+
+  private String recortar(String s, int max) {
+    if (s == null) return "";
+    String t = s.trim();
+    if (t.length() <= max) return t;
+    return t.substring(0, max - 1) + "…";
   }
 
   private String safeName(String n) {
@@ -152,7 +225,6 @@ public class OrdenesTrabajoService {
   }
 
   private String generarCodigo(String prefijo) {
-    // Simple y suficiente para demo
     long num = System.currentTimeMillis() % 100000;
     return prefijo + "-" + String.format("%05d", num);
   }
@@ -170,21 +242,17 @@ public class OrdenesTrabajoService {
     );
   }
 
-  private OtDetalleDto toDetalle(OrdenTrabajo ot, List<NotaDto> notas, List<FotoDto> fotos) {
+  private OtDetalleDto toDetalle(OrdenTrabajo ot, List<NotaDto> notas, List<FotoDto> fotos, List<HistorialItemDto> historial) {
     Cliente c = ot.getCliente();
     Usuario tec = ot.getTecnico();
 
     ClienteResumenDto clienteDto = new ClienteResumenDto(c.getId(), c.getNombre(), c.getTelefono(), c.getEmail());
     UsuarioResumenDto tecnicoDto = tec == null ? null :
-    	  new UsuarioResumenDto(
-    	      tec.getId(),
-    	      tec.getNombre(),
-    	      tec.getUsuario(),
-    	      tec.getEmail(),
-    	      tec.getRol().name(),
-    	      tec.isActivo()
-    	  );
+      new UsuarioResumenDto(tec.getId(), tec.getNombre(), tec.getUsuario(), tec.getEmail(), tec.getRol().name(), tec.isActivo());
 
+    // ⚠️ Si en tu proyecto UsuarioResumenDto ya incluye email (6 campos),
+    // reemplaza la línea anterior por:
+    // new UsuarioResumenDto(tec.getId(), tec.getNombre(), tec.getUsuario(), tec.getEmail(), tec.getRol().name(), tec.isActivo());
 
     return new OtDetalleDto(
       ot.getId(),
@@ -200,6 +268,7 @@ public class OrdenesTrabajoService {
       ot.getNotasAcceso(),
       notas,
       fotos,
+      historial,
       ot.getCreatedAt(),
       ot.getUpdatedAt()
     );
