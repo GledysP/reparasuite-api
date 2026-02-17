@@ -50,7 +50,7 @@ public class DataSeeder {
       // Clientes
       Cliente c1 = crearClienteSiNoExiste(clienteRepo, encoder, "Carlos Pérez", "611000111", "carlos@mail.com", "cliente123");
       Cliente c2 = crearClienteSiNoExiste(clienteRepo, encoder, "María López", "622000222", "maria@mail.com", "cliente123");
-
+      Cliente c3 = crearClienteSiNoExiste(clienteRepo, encoder, "Gledys", "600123456", "gle@gmail.com", "123456");
       // OTs demo
       if (otRepo.count() == 0) {
 

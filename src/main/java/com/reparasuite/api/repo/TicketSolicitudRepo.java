@@ -6,8 +6,22 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import com.reparasuite.api.model.EstadoTicket;
 import com.reparasuite.api.model.TicketSolicitud;
 
 public interface TicketSolicitudRepo extends JpaRepository<TicketSolicitud, UUID> {
   Page<TicketSolicitud> findByCliente_Id(UUID clienteId, Pageable pageable);
+
+  // ✅ Backoffice: listar todos
+  Page<TicketSolicitud> findAll(Pageable pageable);
+
+  // ✅ Backoffice: filtrar por estado
+  Page<TicketSolicitud> findByEstado(EstadoTicket estado, Pageable pageable);
+
+  // ✅ Backoffice: buscar por asunto/descripcion (simple)
+  Page<TicketSolicitud> findByAsuntoContainingIgnoreCaseOrDescripcionContainingIgnoreCase(
+      String asunto,
+      String descripcion,
+      Pageable pageable
+  );
 }

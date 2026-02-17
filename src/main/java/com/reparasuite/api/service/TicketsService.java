@@ -110,4 +110,95 @@ public class TicketsService {
     if (t.length() <= max) return t;
     return t.substring(0, max - 1) + "…";
   }
+  // =========================
+  // BACKOFFICE (ADMIN/TECNICO)
+  // =========================
+
+  public ApiListaResponse<TicketBackofficeListaItemDto> listarBackoffice(int page, int size) {
+    requireBackofficeRole();
+
+    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
+    Page<TicketSolicitud> p = ticketRepo.findAll(pageable);
+
+    List<TicketBackofficeListaItemDto> items = p.getContent().stream()
+        .map(t -> new TicketBackofficeListaItemDto(
+            t.getId(),
+            t.getEstado().name(),
+            t.getAsunto(),
+            t.getUpdatedAt(),
+            t.getCliente().getId(),
+            t.getCliente().getNombre(),
+            t.getCliente().getEmail()
+        ))
+        .toList();
+
+    return new ApiListaResponse<>(items, p.getTotalElements());
+  }
+
+  public TicketDetalleDto obtenerBackoffice(String id) {
+    requireBackofficeRole();
+
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow();
+
+    List<MensajeDto> mensajes = msgRepo.findByTicket_IdOrderByCreatedAtAsc(t.getId()).stream()
+        .map(m -> new MensajeDto(m.getId(), m.getRemitenteTipo().name(), m.getRemitenteNombre(), m.getContenido(), m.getCreatedAt()))
+        .toList();
+
+    return new TicketDetalleDto(
+        t.getId(),
+        t.getEstado().name(),
+        t.getAsunto(),
+        t.getDescripcion(),
+        mensajes,
+        t.getCreatedAt(),
+        t.getUpdatedAt()
+    );
+  }
+
+  @Transactional
+  public void anadirMensajeBackoffice(String ticketId, MensajeEnviarRequest req) {
+    requireBackofficeRole();
+
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
+
+    String nombreUsuario = nombreActorBackoffice();
+
+    TicketMensaje m = new TicketMensaje();
+    m.setTicket(t);
+    m.setRemitenteTipo(TipoRemitente.USUARIO);
+    m.setRemitenteNombre(nombreUsuario);
+    m.setContenido(req.contenido());
+    msgRepo.save(m);
+
+    // touch updatedAt
+    t.setEstado(t.getEstado());
+    ticketRepo.save(t);
+  }
+
+  // -------------------------
+  // Helpers Backoffice
+  // -------------------------
+  private void requireBackofficeRole() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth instanceof JwtAuthenticationToken jwtAuth) {
+      String rol = String.valueOf(jwtAuth.getToken().getClaims().get("rol"));
+      if (!"ADMIN".equalsIgnoreCase(rol) && !"TECNICO".equalsIgnoreCase(rol)) {
+        throw new RuntimeException("No autorizado");
+      }
+      return;
+    }
+    throw new RuntimeException("No autenticado");
+  }
+
+  private String nombreActorBackoffice() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth instanceof JwtAuthenticationToken jwtAuth) {
+      Object n = jwtAuth.getToken().getClaims().get("nombre");
+      if (n != null) return String.valueOf(n);
+      // fallback
+      return "Backoffice";
+    }
+    return "Backoffice";
+  }
+
 }
