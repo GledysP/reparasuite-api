@@ -20,6 +20,10 @@ public class FotoOt {
   @Column(nullable = false, length = 500)
   private String url;
 
+  // ✅ NUEVO: visible al cliente
+  @Column(name = "visible_cliente", nullable = false)
+  private boolean visibleCliente = false;
+
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
 
@@ -32,8 +36,10 @@ public class FotoOt {
   public UUID getId() { return id; }
   public OrdenTrabajo getOt() { return ot; }
   public String getUrl() { return url; }
+  public boolean isVisibleCliente() { return visibleCliente; }
   public OffsetDateTime getCreatedAt() { return createdAt; }
 
   public void setOt(OrdenTrabajo ot) { this.ot = ot; }
   public void setUrl(String url) { this.url = url; }
+  public void setVisibleCliente(boolean visibleCliente) { this.visibleCliente = visibleCliente; }
 }

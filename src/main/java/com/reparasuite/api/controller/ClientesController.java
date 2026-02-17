@@ -31,13 +31,13 @@ public class ClientesController {
     return service.obtener(UUID.fromString(id));
   }
 
-  // ✅ NUEVO: GET /api/v1/clientes/{id}/ordenes-trabajo
+  // ✅ NUEVO: /clientes/{id}/ordenes-trabajo
   @GetMapping("/{id}/ordenes-trabajo")
-  public ApiListaResponse<OtClienteListaItemDto> listarOrdenesTrabajo(
+  public ApiListaResponse<ClienteOtItemDto> ordenesTrabajo(
       @PathVariable String id,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size
   ) {
-    return service.listarOrdenesTrabajo(UUID.fromString(id), page, size);
+    return service.ordenesTrabajo(UUID.fromString(id), page, size);
   }
 }

@@ -6,8 +6,8 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 
 import com.reparasuite.api.dto.*;
-import com.reparasuite.api.model.Cliente;
 import com.reparasuite.api.model.OrdenTrabajo;
+import com.reparasuite.api.model.Cliente;
 import com.reparasuite.api.repo.ClienteRepo;
 import com.reparasuite.api.repo.OrdenTrabajoRepo;
 
@@ -43,26 +43,15 @@ public class ClientesService {
     return toResumen(c);
   }
 
-  // ✅ NUEVO: lista paginada de OTs del cliente
-  public ApiListaResponse<OtClienteListaItemDto> listarOrdenesTrabajo(UUID clienteId, int page, int size) {
-    // asegura que el cliente existe (404 simple via orElseThrow)
-    clienteRepo.findById(clienteId).orElseThrow();
-
+  public ApiListaResponse<ClienteOtItemDto> ordenesTrabajo(UUID clienteId, int page, int size) {
     Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
     Page<OrdenTrabajo> p = otRepo.findByCliente_Id(clienteId, pageable);
 
     return new ApiListaResponse<>(
-        p.getContent().stream().map(this::toOtClienteItem).toList(),
+        p.getContent().stream()
+            .map(ot -> new ClienteOtItemDto(ot.getCodigo(), ot.getEstado().name(), ot.getTipo().name(), ot.getUpdatedAt()))
+            .toList(),
         p.getTotalElements()
-    );
-  }
-
-  private OtClienteListaItemDto toOtClienteItem(OrdenTrabajo ot) {
-    return new OtClienteListaItemDto(
-        ot.getCodigo(),
-        ot.getEstado().name(),
-        ot.getTipo().name(),
-        ot.getUpdatedAt()
     );
   }
 

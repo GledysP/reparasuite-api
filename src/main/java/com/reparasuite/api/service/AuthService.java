@@ -48,7 +48,6 @@ public class AuthService {
     Instant now = Instant.now();
     Instant exp = now.plusSeconds(expMin * 60);
 
-    // HS256 necesita clave >= 256 bits (32 bytes) mínimo
     var key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
 
     String token = Jwts.builder()
@@ -65,14 +64,13 @@ public class AuthService {
   }
 
   private UsuarioResumenDto toDto(Usuario u) {
-	  return new UsuarioResumenDto(
-	      u.getId(),
-	      u.getNombre(),
-	      u.getUsuario(),
-	      u.getEmail(),
-	      u.getRol().name(),
-	      u.isActivo()
-	  );
-	}
-
+    return new UsuarioResumenDto(
+        u.getId(),
+        u.getNombre(),
+        u.getUsuario(),
+        u.getEmail(),        // ✅ email real
+        u.getRol().name(),
+        u.isActivo()
+    );
+  }
 }

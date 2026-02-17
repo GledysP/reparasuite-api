@@ -22,32 +22,33 @@ public class UsuariosController {
 
   @GetMapping
   public List<UsuarioResumenDto> listar(@RequestParam(defaultValue = "true") boolean activos) {
-    // MVP: solo activos (como ya tenías)
-    return service.listarActivos();
+    return service.listar(activos);
   }
 
-  // ✅ NUEVO: GET /api/v1/usuarios/{id}
   @GetMapping("/{id}")
-  public UsuarioDetalleDto obtener(@PathVariable String id) {
+  public UsuarioResumenDto obtener(@PathVariable String id) {
     return service.obtener(UUID.fromString(id));
   }
 
-  // ✅ NUEVO: POST /api/v1/usuarios
   @PostMapping
-  public ResponseEntity<UsuarioDetalleDto> crear(@Validated @RequestBody UsuarioCrearRequest req) {
+  public ResponseEntity<UsuarioResumenDto> crear(@Validated @RequestBody UsuarioCrearRequest req) {
     return ResponseEntity.ok(service.crear(req));
   }
 
-  // ✅ NUEVO: PUT /api/v1/usuarios/{id}
   @PutMapping("/{id}")
-  public ResponseEntity<UsuarioDetalleDto> actualizar(@PathVariable String id, @Validated @RequestBody UsuarioUpdateRequest req) {
+  public ResponseEntity<UsuarioResumenDto> actualizar(@PathVariable String id, @Validated @RequestBody UsuarioUpdateRequest req) {
     return ResponseEntity.ok(service.actualizar(UUID.fromString(id), req));
   }
 
-  // ✅ NUEVO: PATCH /api/v1/usuarios/{id}/estado
   @PatchMapping("/{id}/estado")
-  public ResponseEntity<?> cambiarEstado(@PathVariable String id, @Validated @RequestBody UsuarioEstadoRequest req) {
+  public ResponseEntity<?> estado(@PathVariable String id, @Validated @RequestBody UsuarioEstadoRequest req) {
     service.cambiarEstado(UUID.fromString(id), req.activo());
+    return ResponseEntity.noContent().build();
+  }
+
+  @DeleteMapping("/{id}")
+  public ResponseEntity<?> eliminar(@PathVariable String id) {
+    service.eliminar(UUID.fromString(id));
     return ResponseEntity.noContent().build();
   }
 }

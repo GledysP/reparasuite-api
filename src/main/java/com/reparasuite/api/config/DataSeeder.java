@@ -1,5 +1,6 @@
 package com.reparasuite.api.config;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 import org.springframework.boot.CommandLineRunner;
@@ -19,14 +20,14 @@ public class DataSeeder {
       UsuarioRepo usuarioRepo,
       ClienteRepo clienteRepo,
       OrdenTrabajoRepo otRepo,
-      NotaOtRepo notaRepo,
-      FotoOtRepo fotoRepo,
+      PresupuestoOtRepo presupuestoRepo,
+      PagoOtRepo pagoRepo,
       HistorialOtRepo historialRepo,
       PasswordEncoder encoder
   ) {
     return args -> {
 
-      // 1) Taller fijo
+      // Taller fijo
       if (tallerRepo.findById(1L).isEmpty()) {
         Taller t = new Taller();
         t.setId(1L);
@@ -38,22 +39,20 @@ public class DataSeeder {
         tallerRepo.save(t);
       }
 
-      // 2) Usuarios
-      // Si en tu proyecto añadiste email a Usuario, mantén esta firma (user, nombre, email, pass, rol)
+      // Usuarios backoffice
       crearUsuarioSiNoExiste(usuarioRepo, encoder, "admin", "Administrador", "admin@reparasuite.com", "admin123", RolUsuario.ADMIN);
       crearUsuarioSiNoExiste(usuarioRepo, encoder, "tec1", "Técnico Uno", "tec1@reparasuite.com", "tec123", RolUsuario.TECNICO);
       crearUsuarioSiNoExiste(usuarioRepo, encoder, "tec2", "Técnico Dos", "tec2@reparasuite.com", "tec123", RolUsuario.TECNICO);
 
-      // Actor del historial para el seed (no hay JWT aquí)
-      Usuario adminActor = usuarioRepo.findByUsuario("admin").orElseThrow();
+      Usuario admin = usuarioRepo.findByUsuario("admin").orElseThrow();
+      Usuario tec1 = usuarioRepo.findByUsuario("tec1").orElseThrow();
 
-      // 3) Clientes
-      Cliente c1 = crearClienteSiNoExiste(clienteRepo, "Carlos Pérez", "611000111", "carlos@mail.com");
-      Cliente c2 = crearClienteSiNoExiste(clienteRepo, "María López", "622000222", "maria@mail.com");
+      // Clientes
+      Cliente c1 = crearClienteSiNoExiste(clienteRepo, encoder, "Carlos Pérez", "611000111", "carlos@mail.com", "cliente123");
+      Cliente c2 = crearClienteSiNoExiste(clienteRepo, encoder, "María López", "622000222", "maria@mail.com", "cliente123");
 
-      // 4) OTs demo (si no hay)
+      // OTs demo
       if (otRepo.count() == 0) {
-        Usuario tec1 = usuarioRepo.findByUsuario("tec1").orElseThrow();
 
         OrdenTrabajo ot1 = new OrdenTrabajo();
         ot1.setCodigo("OT-0001");
@@ -64,13 +63,11 @@ public class DataSeeder {
         ot1.setCliente(c1);
         ot1.setTecnico(tec1);
         ot1 = otRepo.save(ot1);
-
-        // ✅ Historial inicial OT_CREADA (enriquecido)
-        crearHistorialCreacion(historialRepo, ot1, adminActor);
+        crearHistorialCreacion(historialRepo, ot1, admin);
 
         OrdenTrabajo ot2 = new OrdenTrabajo();
         ot2.setCodigo("OT-0002");
-        ot2.setEstado(EstadoOt.EN_CURSO);
+        ot2.setEstado(EstadoOt.PRESUPUESTO);
         ot2.setTipo(TipoOt.DOMICILIO);
         ot2.setPrioridad(PrioridadOt.ALTA);
         ot2.setDescripcion("Instalación de router y revisión de cableado");
@@ -80,16 +77,35 @@ public class DataSeeder {
         ot2.setDireccion("C/ Demo 123");
         ot2.setNotasAcceso("Llamar al llegar");
         ot2 = otRepo.save(ot2);
+        crearHistorialCreacion(historialRepo, ot2, admin);
 
-        // ✅ Historial inicial OT_CREADA (enriquecido)
-        crearHistorialCreacion(historialRepo, ot2, adminActor);
+        // Presupuesto ENVIADO + pago asociado (para probar flujo cliente)
+        PresupuestoOt p = new PresupuestoOt();
+        p.setOt(ot2);
+        p.setEstado(EstadoPresupuesto.ENVIADO);
+        p.setImporte(new BigDecimal("120.00"));
+        p.setDetalle("Instalación + revisión. Incluye desplazamiento.");
+        p.setSentAt(OffsetDateTime.now().minusMinutes(20));
+        p = presupuestoRepo.save(p);
+
+        PagoOt pago = new PagoOt();
+        pago.setOt(ot2);
+        pago.setImporte(p.getImporte());
+        pago.setEstado(EstadoPagoOt.PENDIENTE);
+        pagoRepo.save(pago);
+
+        HistorialOt h = new HistorialOt();
+        h.setOt(ot2);
+        h.setEvento(EventoHistorialOt.PRESUPUESTO_ENVIADO);
+        h.setDescripcion("Presupuesto enviado al cliente");
+        h.setActorTipo(ActorTipo.USUARIO);
+        h.setActorNombre(admin.getNombre());
+        h.setUsuario(admin);
+        h.setFecha(p.getSentAt());
+        historialRepo.save(h);
       }
     };
   }
-
-  // -------------------
-  // Helpers
-  // -------------------
 
   private void crearUsuarioSiNoExiste(UsuarioRepo repo, PasswordEncoder encoder,
                                      String user, String nombre, String email, String pass, RolUsuario rol) {
@@ -98,28 +114,31 @@ public class DataSeeder {
     Usuario u = new Usuario();
     u.setUsuario(user);
     u.setNombre(nombre);
-
-    // Si tu entidad Usuario NO tiene email, elimina esta línea y ajusta la firma.
     u.setEmail(email);
-
     u.setRol(rol);
     u.setActivo(true);
     u.setPasswordHash(encoder.encode(pass));
     repo.save(u);
   }
 
-  private Cliente crearClienteSiNoExiste(ClienteRepo repo, String nombre, String tel, String email) {
-    // MVP simple: si existe uno con mismo nombre, lo reutilizamos
-    return repo.findAll().stream()
+  private Cliente crearClienteSiNoExiste(ClienteRepo repo, PasswordEncoder encoder,
+                                        String nombre, String tel, String email, String passPortal) {
+    Cliente existing = repo.findAll().stream()
         .filter(c -> c.getNombre().equalsIgnoreCase(nombre))
-        .findFirst()
-        .orElseGet(() -> {
-          Cliente c = new Cliente();
-          c.setNombre(nombre);
-          c.setTelefono(tel);
-          c.setEmail(email);
-          return repo.save(c);
-        });
+        .findFirst().orElse(null);
+
+    if (existing != null) return existing;
+
+    Cliente c = new Cliente();
+    c.setNombre(nombre);
+    c.setTelefono(tel);
+    c.setEmail(email);
+
+    // Portal activo
+    c.setPortalActivo(true);
+    c.setPasswordHashPortal(encoder.encode(passPortal));
+
+    return repo.save(c);
   }
 
   private void crearHistorialCreacion(HistorialOtRepo historialRepo, OrdenTrabajo ot, Usuario actor) {
@@ -132,8 +151,8 @@ public class DataSeeder {
         ot.getCliente().getNombre() + ": " + recortar(ot.getDescripcion(), 200);
 
     h.setDescripcion(desc);
-
-    // Para que el timeline arranque exactamente en la fecha de creación de la OT
+    h.setActorTipo(ActorTipo.USUARIO);
+    h.setActorNombre(actor.getNombre());
     h.setFecha(ot.getCreatedAt());
 
     historialRepo.save(h);

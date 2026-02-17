@@ -18,7 +18,11 @@ public record OtDetalleDto(
     String notasAcceso,
     List<NotaDto> notas,
     List<FotoDto> fotos,
-    List<HistorialItemDto> historial,  // ✅ NUEVO
+    List<HistorialItemDto> historial,
+    PresupuestoDto presupuesto,
+    PagoDto pago,
+    List<CitaDto> citas,
+    List<MensajeDto> mensajes,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
 ) { }

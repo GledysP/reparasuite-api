@@ -1,5 +1,3 @@
 package com.reparasuite.api.dto;
 
-public record HistorialUsuarioDto(
-    String nombre
-) { }
+public record HistorialUsuarioDto(String nombre) { }

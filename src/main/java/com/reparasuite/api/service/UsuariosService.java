@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.reparasuite.api.dto.*;
 import com.reparasuite.api.model.RolUsuario;
@@ -22,70 +23,55 @@ public class UsuariosService {
     this.encoder = encoder;
   }
 
-  public List<UsuarioResumenDto> listarActivos() {
+  public List<UsuarioResumenDto> listar(boolean activos) {
     return usuarioRepo.findAll().stream()
-        .filter(Usuario::isActivo)
-        .map(this::toResumen)
+        .filter(u -> !activos || u.isActivo())
+        .map(this::toDto)
         .toList();
   }
 
-  public UsuarioDetalleDto obtener(UUID id) {
-    Usuario u = usuarioRepo.findById(id).orElseThrow();
-    return toDetalle(u);
+  public UsuarioResumenDto obtener(UUID id) {
+    return toDto(usuarioRepo.findById(id).orElseThrow());
   }
 
-  public UsuarioDetalleDto crear(UsuarioCrearRequest req) {
-    // En este MVP, usuario = email (para no pedir campo adicional).
-    // Si quieres otro comportamiento, lo cambiamos después.
+  @Transactional
+  public UsuarioResumenDto crear(UsuarioCrearRequest req) {
     Usuario u = new Usuario();
     u.setNombre(req.nombre());
+    u.setUsuario(req.usuario());
     u.setEmail(req.email());
-    u.setUsuario(req.email());
     u.setRol(RolUsuario.valueOf(req.rol()));
     u.setActivo(true);
     u.setPasswordHash(encoder.encode(req.password()));
-
     u = usuarioRepo.save(u);
-    return toDetalle(u);
+    return toDto(u);
   }
 
-  public UsuarioDetalleDto actualizar(UUID id, UsuarioUpdateRequest req) {
+  @Transactional
+  public UsuarioResumenDto actualizar(UUID id, UsuarioUpdateRequest req) {
     Usuario u = usuarioRepo.findById(id).orElseThrow();
-
     u.setNombre(req.nombre());
+    u.setUsuario(req.usuario());
     u.setEmail(req.email());
     u.setRol(RolUsuario.valueOf(req.rol()));
-
-    // mantener coherencia: usuario = email
-    u.setUsuario(req.email());
-
-    if (req.password() != null && !req.password().isBlank()) {
-      u.setPasswordHash(encoder.encode(req.password()));
-    }
-
     u = usuarioRepo.save(u);
-    return toDetalle(u);
+    return toDto(u);
   }
 
+  @Transactional
   public void cambiarEstado(UUID id, boolean activo) {
     Usuario u = usuarioRepo.findById(id).orElseThrow();
     u.setActivo(activo);
     usuarioRepo.save(u);
   }
 
-  private UsuarioResumenDto toResumen(Usuario u) {
-    return new UsuarioResumenDto(
-        u.getId(),
-        u.getNombre(),
-        u.getUsuario(),
-        u.getEmail(),
-        u.getRol().name(),
-        u.isActivo()
-    );
+  @Transactional
+  public void eliminar(UUID id) {
+    usuarioRepo.deleteById(id); // ✅ delete físico
   }
 
-  private UsuarioDetalleDto toDetalle(Usuario u) {
-    return new UsuarioDetalleDto(
+  private UsuarioResumenDto toDto(Usuario u) {
+    return new UsuarioResumenDto(
         u.getId(),
         u.getNombre(),
         u.getUsuario(),

@@ -6,8 +6,8 @@ import java.util.UUID;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "nota_ot")
-public class NotaOt {
+@Table(name = "mensaje_ot")
+public class MensajeOt {
 
   @Id
   @Column(columnDefinition = "uuid")
@@ -17,12 +17,15 @@ public class NotaOt {
   @JoinColumn(name = "ot_id")
   private OrdenTrabajo ot;
 
+  @Enumerated(EnumType.STRING)
+  @Column(name = "remitente_tipo", nullable = false)
+  private TipoRemitente remitenteTipo;
+
+  @Column(name = "remitente_nombre", nullable = false, length = 200)
+  private String remitenteNombre;
+
   @Column(nullable = false, length = 2000)
   private String contenido;
-
-  // ✅ NUEVO: visible al cliente
-  @Column(name = "visible_cliente", nullable = false)
-  private boolean visibleCliente = false;
 
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
@@ -35,11 +38,13 @@ public class NotaOt {
 
   public UUID getId() { return id; }
   public OrdenTrabajo getOt() { return ot; }
+  public TipoRemitente getRemitenteTipo() { return remitenteTipo; }
+  public String getRemitenteNombre() { return remitenteNombre; }
   public String getContenido() { return contenido; }
-  public boolean isVisibleCliente() { return visibleCliente; }
   public OffsetDateTime getCreatedAt() { return createdAt; }
 
   public void setOt(OrdenTrabajo ot) { this.ot = ot; }
+  public void setRemitenteTipo(TipoRemitente remitenteTipo) { this.remitenteTipo = remitenteTipo; }
+  public void setRemitenteNombre(String remitenteNombre) { this.remitenteNombre = remitenteNombre; }
   public void setContenido(String contenido) { this.contenido = contenido; }
-  public void setVisibleCliente(boolean visibleCliente) { this.visibleCliente = visibleCliente; }
 }
