@@ -11,5 +11,6 @@ public record TicketDetalleDto(
     String descripcion,
     List<MensajeDto> mensajes,
     OffsetDateTime createdAt,
-    OffsetDateTime updatedAt
-) { }
+    OffsetDateTime updatedAt,
+    UUID ordenTrabajoId // ✅ NUEVO
+) {}

@@ -35,4 +35,10 @@ public class TicketsBackofficeController {
     service.anadirMensajeBackoffice(id, req);
     return ResponseEntity.noContent().build();
   }
+
+  // ✅ NUEVO: crear OT desde ticket
+  @PostMapping("/{id}/crear-ot")
+  public ResponseEntity<TicketCrearOtResponse> crearOtDesdeTicket(@PathVariable String id) {
+    return ResponseEntity.ok(service.crearOtDesdeTicketBackoffice(id));
+  }
 }

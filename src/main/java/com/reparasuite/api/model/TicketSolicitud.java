@@ -27,6 +27,10 @@ public class TicketSolicitud {
   @Column(nullable = false, length = 4000)
   private String descripcion;
 
+  // ✅ NUEVO: OT creada a partir del ticket (preorden -> OT)
+  @Column(name = "orden_trabajo_id", columnDefinition = "uuid")
+  private UUID ordenTrabajoId;
+
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
 
@@ -53,6 +57,9 @@ public class TicketSolicitud {
   public String getDescripcion() { return descripcion; }
   public OffsetDateTime getCreatedAt() { return createdAt; }
   public OffsetDateTime getUpdatedAt() { return updatedAt; }
+
+  public UUID getOrdenTrabajoId() { return ordenTrabajoId; }
+  public void setOrdenTrabajoId(UUID ordenTrabajoId) { this.ordenTrabajoId = ordenTrabajoId; }
 
   public void setCliente(Cliente cliente) { this.cliente = cliente; }
   public void setEstado(EstadoTicket estado) { this.estado = estado; }

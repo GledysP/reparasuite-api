@@ -68,7 +68,7 @@ public class TicketsBackofficeService {
         .map(m -> new MensajeDto(m.getId(), m.getRemitenteTipo().name(), m.getRemitenteNombre(), m.getContenido(), m.getCreatedAt()))
         .toList();
 
-    return new TicketDetalleDto(t.getId(), t.getEstado().name(), t.getAsunto(), t.getDescripcion(), mensajes, t.getCreatedAt(), t.getUpdatedAt());
+    return new TicketDetalleDto(t.getId(), t.getEstado().name(), t.getAsunto(), t.getDescripcion(), mensajes, t.getCreatedAt(), t.getUpdatedAt(),t.getOrdenTrabajoId());
   }
 
   @Transactional

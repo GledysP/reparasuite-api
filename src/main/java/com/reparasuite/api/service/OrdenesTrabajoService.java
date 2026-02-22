@@ -152,7 +152,7 @@ public class OrdenesTrabajoService {
     UsuarioResumenDto tecnicoDto = null;
     if (!cliente && tec != null) {
       // Si tu UsuarioResumenDto tiene email, ajusta aquí según tu versión actual
-     new UsuarioResumenDto(tec.getId(), tec.getNombre(), tec.getUsuario(), tec.getEmail(), tec.getRol().name(), tec.isActivo());
+    	tecnicoDto = new UsuarioResumenDto(tec.getId(), tec.getNombre(), tec.getUsuario(), tec.getEmail(), tec.getRol().name(), tec.isActivo());
     }
 
     return new OtDetalleDto(
@@ -538,6 +538,49 @@ public class OrdenesTrabajoService {
 
     return new MensajeDto(m.getId(), m.getRemitenteTipo().name(), m.getRemitenteNombre(), m.getContenido(), m.getCreatedAt());
   }
+  
+	//=========================
+	//CREAR OT DESDE TICKET (backoffice)
+	//=========================
+	@Transactional
+	public record CrearDesdeTicketResponse(UUID id, String codigo) {}
+	
+	@Transactional
+	public CrearDesdeTicketResponse crearDesdeTicket(TicketSolicitud ticket) {
+	 // Este método lo llama TicketsService (backoffice) y ya valida rol.
+	 Taller t = tallerRepo.findById(1L).orElseThrow();
+	 String codigo = generarCodigo(t.getPrefijoOt());
+	
+	 // Defaults seguros (ajusta si quieres)
+	 TipoOt tipo;
+	 PrioridadOt prioridad;
+	
+	 try { tipo = TipoOt.valueOf("DOMICILIO"); }
+	 catch (Exception e) { tipo = TipoOt.values()[0]; }
+	
+	 try { prioridad = PrioridadOt.valueOf("MEDIA"); }
+	 catch (Exception e) { prioridad = PrioridadOt.values()[0]; }
+	
+	 OrdenTrabajo ot = new OrdenTrabajo();
+	 ot.setCodigo(codigo);
+	 ot.setCliente(ticket.getCliente());
+	 ot.setTecnico(null);
+	 ot.setTipo(tipo);
+	 ot.setPrioridad(prioridad);
+	
+	 String desc = "Ticket: " + ticket.getAsunto() + "\n\n" + ticket.getDescripcion();
+	 ot.setDescripcion(desc);
+	
+	 ot.setEstado(EstadoOt.RECIBIDA);
+	 ot = otRepo.save(ot);
+	
+	 registrarEvento(ot, EventoHistorialOt.OT_CREADA,
+	     "OT creada desde ticket: " + ticket.getAsunto());
+	
+	 return new CrearDesdeTicketResponse(ot.getId(), ot.getCodigo());
+	}
+
+  
 
   // ----------------------
   // Helpers

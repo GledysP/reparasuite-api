@@ -9,6 +9,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.reparasuite.api.dto.TicketCrearOtResponse;
 
 import com.reparasuite.api.dto.*;
 import com.reparasuite.api.model.*;
@@ -17,188 +18,221 @@ import com.reparasuite.api.repo.*;
 @Service
 public class TicketsService {
 
-  private final TicketSolicitudRepo ticketRepo;
-  private final TicketMensajeRepo msgRepo;
-  private final ClienteRepo clienteRepo;
+	private final TicketSolicitudRepo ticketRepo;
+	private final TicketMensajeRepo msgRepo;
+	private final ClienteRepo clienteRepo;
+	private final OrdenesTrabajoService ordenesTrabajoService;
 
-  public TicketsService(TicketSolicitudRepo ticketRepo, TicketMensajeRepo msgRepo, ClienteRepo clienteRepo) {
-    this.ticketRepo = ticketRepo;
-    this.msgRepo = msgRepo;
-    this.clienteRepo = clienteRepo;
-  }
+	public TicketsService(TicketSolicitudRepo ticketRepo, TicketMensajeRepo msgRepo, ClienteRepo clienteRepo,
+			OrdenesTrabajoService ordenesTrabajoService) {
+		this.ticketRepo = ticketRepo;
+		this.msgRepo = msgRepo;
+		this.clienteRepo = clienteRepo;
+		this.ordenesTrabajoService = ordenesTrabajoService;
+	}
 
-  public ApiListaResponse<TicketListaItemDto> listar(int page, int size) {
-    UUID clienteId = clienteId();
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
-    Page<TicketSolicitud> p = ticketRepo.findByCliente_Id(clienteId, pageable);
+	public ApiListaResponse<TicketListaItemDto> listar(int page, int size) {
+		UUID clienteId = clienteId();
+		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
+		Page<TicketSolicitud> p = ticketRepo.findByCliente_Id(clienteId, pageable);
 
-    List<TicketListaItemDto> items = p.getContent().stream()
-        .map(t -> new TicketListaItemDto(t.getId(), t.getEstado().name(), t.getAsunto(), t.getUpdatedAt()))
-        .toList();
+		List<TicketListaItemDto> items = p.getContent().stream()
+				.map(t -> new TicketListaItemDto(t.getId(), t.getEstado().name(), t.getAsunto(), t.getUpdatedAt()))
+				.toList();
 
-    return new ApiListaResponse<>(items, p.getTotalElements());
-  }
+		return new ApiListaResponse<>(items, p.getTotalElements());
+	}
 
-  public TicketDetalleDto obtener(String id) {
-    UUID clienteId = clienteId();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow();
-    if (!t.getCliente().getId().equals(clienteId)) throw new RuntimeException("No autorizado");
+	public TicketDetalleDto obtener(String id) {
+		UUID clienteId = clienteId();
+		TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow();
+		if (!t.getCliente().getId().equals(clienteId))
+			throw new RuntimeException("No autorizado");
 
-    List<MensajeDto> mensajes = msgRepo.findByTicket_IdOrderByCreatedAtAsc(t.getId()).stream()
-        .map(m -> new MensajeDto(m.getId(), m.getRemitenteTipo().name(), m.getRemitenteNombre(), m.getContenido(), m.getCreatedAt()))
-        .toList();
+		List<MensajeDto> mensajes = msgRepo
+				.findByTicket_IdOrderByCreatedAtAsc(t.getId()).stream().map(m -> new MensajeDto(m.getId(),
+						m.getRemitenteTipo().name(), m.getRemitenteNombre(), m.getContenido(), m.getCreatedAt()))
+				.toList();
 
-    return new TicketDetalleDto(t.getId(), t.getEstado().name(), t.getAsunto(), t.getDescripcion(), mensajes, t.getCreatedAt(), t.getUpdatedAt());
-  }
+		return new TicketDetalleDto(t.getId(), t.getEstado().name(), t.getAsunto(), t.getDescripcion(), mensajes,
+				t.getCreatedAt(), t.getUpdatedAt(),t.getOrdenTrabajoId());
+	}
 
-  @Transactional
-  public TicketDetalleDto crear(TicketCrearRequest req) {
-    UUID clienteId = clienteId();
-    Cliente c = clienteRepo.findById(clienteId).orElseThrow();
+	@Transactional
+	public TicketDetalleDto crear(TicketCrearRequest req) {
+		UUID clienteId = clienteId();
+		Cliente c = clienteRepo.findById(clienteId).orElseThrow();
 
-    TicketSolicitud t = new TicketSolicitud();
-    t.setCliente(c);
-    t.setEstado(EstadoTicket.ABIERTO);
-    t.setAsunto(req.asunto());
-    t.setDescripcion(req.descripcion());
-    t = ticketRepo.save(t);
+		TicketSolicitud t = new TicketSolicitud();
+		t.setCliente(c);
+		t.setEstado(EstadoTicket.ABIERTO);
+		t.setAsunto(req.asunto());
+		t.setDescripcion(req.descripcion());
+		t = ticketRepo.save(t);
 
-    // mensaje inicial
-    TicketMensaje m = new TicketMensaje();
-    m.setTicket(t);
-    m.setRemitenteTipo(TipoRemitente.CLIENTE);
-    m.setRemitenteNombre(c.getNombre());
-    m.setContenido("Solicitud creada: " + recortar(req.descripcion(), 500));
-    msgRepo.save(m);
+		// mensaje inicial
+		TicketMensaje m = new TicketMensaje();
+		m.setTicket(t);
+		m.setRemitenteTipo(TipoRemitente.CLIENTE);
+		m.setRemitenteNombre(c.getNombre());
+		m.setContenido("Solicitud creada: " + recortar(req.descripcion(), 500));
+		msgRepo.save(m);
 
-    return obtener(t.getId().toString());
-  }
+		return obtener(t.getId().toString());
+	}
 
-  @Transactional
-  public void anadirMensaje(String ticketId, MensajeEnviarRequest req) {
-    UUID clienteId = clienteId();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
-    if (!t.getCliente().getId().equals(clienteId)) throw new RuntimeException("No autorizado");
+	@Transactional
+	public void anadirMensaje(String ticketId, MensajeEnviarRequest req) {
+		UUID clienteId = clienteId();
+		TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
+		if (!t.getCliente().getId().equals(clienteId))
+			throw new RuntimeException("No autorizado");
 
-    Cliente c = clienteRepo.findById(clienteId).orElseThrow();
+		Cliente c = clienteRepo.findById(clienteId).orElseThrow();
 
-    TicketMensaje m = new TicketMensaje();
-    m.setTicket(t);
-    m.setRemitenteTipo(TipoRemitente.CLIENTE);
-    m.setRemitenteNombre(c.getNombre());
-    m.setContenido(req.contenido());
-    msgRepo.save(m);
+		TicketMensaje m = new TicketMensaje();
+		m.setTicket(t);
+		m.setRemitenteTipo(TipoRemitente.CLIENTE);
+		m.setRemitenteNombre(c.getNombre());
+		m.setContenido(req.contenido());
+		msgRepo.save(m);
 
-    // touch updatedAt
-    t.setEstado(t.getEstado());
-    ticketRepo.save(t);
-  }
+		// touch updatedAt
+		t.setEstado(t.getEstado());
+		ticketRepo.save(t);
+	}
 
-  private UUID clienteId() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth instanceof JwtAuthenticationToken jwtAuth) {
-      String rol = String.valueOf(jwtAuth.getToken().getClaims().get("rol"));
-      if (!"CLIENTE".equalsIgnoreCase(rol)) throw new RuntimeException("No autorizado");
-      return UUID.fromString(jwtAuth.getToken().getSubject());
-    }
-    throw new RuntimeException("No autenticado");
-  }
+	private UUID clienteId() {
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		if (auth instanceof JwtAuthenticationToken jwtAuth) {
+			String rol = String.valueOf(jwtAuth.getToken().getClaims().get("rol"));
+			if (!"CLIENTE".equalsIgnoreCase(rol))
+				throw new RuntimeException("No autorizado");
+			return UUID.fromString(jwtAuth.getToken().getSubject());
+		}
+		throw new RuntimeException("No autenticado");
+	}
 
-  private String recortar(String s, int max) {
-    if (s == null) return "";
-    String t = s.trim();
-    if (t.length() <= max) return t;
-    return t.substring(0, max - 1) + "…";
-  }
-  // =========================
-  // BACKOFFICE (ADMIN/TECNICO)
-  // =========================
+	private String recortar(String s, int max) {
+		if (s == null)
+			return "";
+		String t = s.trim();
+		if (t.length() <= max)
+			return t;
+		return t.substring(0, max - 1) + "…";
+	}
+	// =========================
+	// BACKOFFICE (ADMIN/TECNICO)
+	// =========================
 
-  public ApiListaResponse<TicketBackofficeListaItemDto> listarBackoffice(int page, int size) {
-    requireBackofficeRole();
+	public ApiListaResponse<TicketBackofficeListaItemDto> listarBackoffice(int page, int size) {
+		requireBackofficeRole();
 
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
-    Page<TicketSolicitud> p = ticketRepo.findAll(pageable);
+		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
+		Page<TicketSolicitud> p = ticketRepo.findAll(pageable);
 
-    List<TicketBackofficeListaItemDto> items = p.getContent().stream()
-        .map(t -> new TicketBackofficeListaItemDto(
-            t.getId(),
-            t.getEstado().name(),
-            t.getAsunto(),
-            t.getUpdatedAt(),
-            t.getCliente().getId(),
-            t.getCliente().getNombre(),
-            t.getCliente().getEmail()
-        ))
-        .toList();
+		List<TicketBackofficeListaItemDto> items = p.getContent().stream()
+				.map(t -> new TicketBackofficeListaItemDto(t.getId(), t.getEstado().name(), t.getAsunto(),
+						t.getUpdatedAt(), t.getCliente().getId(), t.getCliente().getNombre(),
+						t.getCliente().getEmail()))
+				.toList();
 
-    return new ApiListaResponse<>(items, p.getTotalElements());
-  }
+		return new ApiListaResponse<>(items, p.getTotalElements());
+	}
 
-  public TicketDetalleDto obtenerBackoffice(String id) {
-    requireBackofficeRole();
+	public TicketDetalleDto obtenerBackoffice(String id) {
+		requireBackofficeRole();
 
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow();
+		TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow();
 
-    List<MensajeDto> mensajes = msgRepo.findByTicket_IdOrderByCreatedAtAsc(t.getId()).stream()
-        .map(m -> new MensajeDto(m.getId(), m.getRemitenteTipo().name(), m.getRemitenteNombre(), m.getContenido(), m.getCreatedAt()))
-        .toList();
+		List<MensajeDto> mensajes = msgRepo
+				.findByTicket_IdOrderByCreatedAtAsc(t.getId()).stream().map(m -> new MensajeDto(m.getId(),
+						m.getRemitenteTipo().name(), m.getRemitenteNombre(), m.getContenido(), m.getCreatedAt()))
+				.toList();
 
-    return new TicketDetalleDto(
-        t.getId(),
-        t.getEstado().name(),
-        t.getAsunto(),
-        t.getDescripcion(),
-        mensajes,
-        t.getCreatedAt(),
-        t.getUpdatedAt()
-    );
-  }
+		return new TicketDetalleDto(t.getId(), t.getEstado().name(), t.getAsunto(), t.getDescripcion(), mensajes,
+				t.getCreatedAt(), t.getUpdatedAt(), t.getOrdenTrabajoId());
+	}
 
-  @Transactional
-  public void anadirMensajeBackoffice(String ticketId, MensajeEnviarRequest req) {
-    requireBackofficeRole();
+	@Transactional
+	public void anadirMensajeBackoffice(String ticketId, MensajeEnviarRequest req) {
+		requireBackofficeRole();
 
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
+		TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
 
-    String nombreUsuario = nombreActorBackoffice();
+		String nombreUsuario = nombreActorBackoffice();
 
-    TicketMensaje m = new TicketMensaje();
-    m.setTicket(t);
-    m.setRemitenteTipo(TipoRemitente.USUARIO);
-    m.setRemitenteNombre(nombreUsuario);
-    m.setContenido(req.contenido());
-    msgRepo.save(m);
+		TicketMensaje m = new TicketMensaje();
+		m.setTicket(t);
+		m.setRemitenteTipo(TipoRemitente.USUARIO);
+		m.setRemitenteNombre(nombreUsuario);
+		m.setContenido(req.contenido());
+		msgRepo.save(m);
 
-    // touch updatedAt
-    t.setEstado(t.getEstado());
-    ticketRepo.save(t);
-  }
+		// touch updatedAt
+		t.setEstado(t.getEstado());
+		ticketRepo.save(t);
+	}
 
-  // -------------------------
-  // Helpers Backoffice
-  // -------------------------
-  private void requireBackofficeRole() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth instanceof JwtAuthenticationToken jwtAuth) {
-      String rol = String.valueOf(jwtAuth.getToken().getClaims().get("rol"));
-      if (!"ADMIN".equalsIgnoreCase(rol) && !"TECNICO".equalsIgnoreCase(rol)) {
-        throw new RuntimeException("No autorizado");
-      }
-      return;
-    }
-    throw new RuntimeException("No autenticado");
-  }
+	// -------------------------
+	// Helpers Backoffice
+	// -------------------------
+	private void requireBackofficeRole() {
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		if (auth instanceof JwtAuthenticationToken jwtAuth) {
+			String rol = String.valueOf(jwtAuth.getToken().getClaims().get("rol"));
+			if (!"ADMIN".equalsIgnoreCase(rol) && !"TECNICO".equalsIgnoreCase(rol)) {
+				throw new RuntimeException("No autorizado");
+			}
+			return;
+		}
+		throw new RuntimeException("No autenticado");
+	}
 
-  private String nombreActorBackoffice() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth instanceof JwtAuthenticationToken jwtAuth) {
-      Object n = jwtAuth.getToken().getClaims().get("nombre");
-      if (n != null) return String.valueOf(n);
-      // fallback
-      return "Backoffice";
-    }
-    return "Backoffice";
-  }
+	@Transactional
+	public TicketCrearOtResponse crearOtDesdeTicketBackoffice(String ticketId) {
+		requireBackofficeRole();
+
+		TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
+
+		// idempotente: si ya está ligado, no creamos otra OT
+		if (t.getOrdenTrabajoId() != null) {
+			return new TicketCrearOtResponse(t.getId(), t.getOrdenTrabajoId(), null);
+		}
+
+		var creada = ordenesTrabajoService.crearDesdeTicket(t);
+
+		// guardar vínculo en ticket
+		t.setOrdenTrabajoId(creada.id());
+		ticketRepo.save(t);
+
+		// mensaje automático en ticket
+		TicketMensaje m = new TicketMensaje();
+		m.setTicket(t);
+		m.setRemitenteTipo(TipoRemitente.USUARIO);
+		m.setRemitenteNombre(nombreActorBackoffice());
+		m.setContenido("Se creó una OT desde este ticket: " + creada.codigo());
+		msgRepo.save(m);
+
+		// (opcional recomendado) mover estado del ticket
+		if (t.getEstado() == EstadoTicket.ABIERTO) {
+			t.setEstado(EstadoTicket.EN_REVISION);
+			ticketRepo.save(t);
+		}
+
+		return new TicketCrearOtResponse(t.getId(), creada.id(), creada.codigo());
+	}
+
+	private String nombreActorBackoffice() {
+		Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+		if (auth instanceof JwtAuthenticationToken jwtAuth) {
+			Object n = jwtAuth.getToken().getClaims().get("nombre");
+			if (n != null)
+				return String.valueOf(n);
+			// fallback
+			return "Backoffice";
+		}
+		return "Backoffice";
+	}
 
 }
