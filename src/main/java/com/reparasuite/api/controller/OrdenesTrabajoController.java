@@ -102,7 +102,14 @@ public class OrdenesTrabajoController {
     return ResponseEntity.ok(service.subirComprobantePago(id, file));
   }
 
-  // Citas cliente
+  // ✅ Pago backoffice (confirmar recepción)
+  @PostMapping("/{id}/pago/confirmar")
+  public ResponseEntity<?> confirmarPagoRecibido(@PathVariable String id) {
+    service.confirmarPagoRecibido(id);
+    return ResponseEntity.noContent().build();
+  }
+
+  // Citas (cliente / backoffice según rol)
   @PostMapping("/{id}/citas")
   public ResponseEntity<CitaDto> reservarCita(@PathVariable String id, @Validated @RequestBody CitaRequest req) {
     return ResponseEntity.ok(service.reservarCita(id, req));

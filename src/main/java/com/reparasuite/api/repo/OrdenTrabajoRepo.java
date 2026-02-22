@@ -16,4 +16,7 @@ public interface OrdenTrabajoRepo extends JpaRepository<OrdenTrabajo, UUID> {
   Page<OrdenTrabajo> findByCliente_Id(UUID clienteId, Pageable pageable);
 
   Optional<OrdenTrabajo> findByCodigo(String codigo);
+
+  // ✅ recomendado para buscar OT por código sin importar mayúsculas/minúsculas
+  Optional<OrdenTrabajo> findByCodigoIgnoreCase(String codigo);
 }

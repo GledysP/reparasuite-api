@@ -68,7 +68,7 @@ public class OrdenesTrabajoService {
   // LISTAR (backoffice)
   // ----------------------
   public ApiListaResponse<OtListaItemDto> listar(String query, int page, int size) {
-    if (ctx().rolCliente()) throw new RuntimeException("No autorizado");
+    if (ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
     Page<OrdenTrabajo> p;
@@ -91,14 +91,12 @@ public class OrdenesTrabajoService {
   public OtDetalleDto obtener(String idOrCodigo) {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
-    // seguridad: si es CLIENTE, solo su OT
     if (ctx().rolCliente()) {
       UUID clienteId = ctx().clienteId();
-      if (!ot.getCliente().getId().equals(clienteId)) throw new RuntimeException("No autorizado");
+      if (!ot.getCliente().getId().equals(clienteId)) throw new SecurityException("No autorizado");
     }
 
     UUID otId = ot.getId();
-
     boolean cliente = ctx().rolCliente();
 
     List<NotaDto> notas = notaRepo.findByOt_IdOrderByCreatedAtDesc(otId).stream()
@@ -151,8 +149,9 @@ public class OrdenesTrabajoService {
     Usuario tec = ot.getTecnico();
     UsuarioResumenDto tecnicoDto = null;
     if (!cliente && tec != null) {
-      // Si tu UsuarioResumenDto tiene email, ajusta aquí según tu versión actual
-    	tecnicoDto = new UsuarioResumenDto(tec.getId(), tec.getNombre(), tec.getUsuario(), tec.getEmail(), tec.getRol().name(), tec.isActivo());
+      tecnicoDto = new UsuarioResumenDto(
+          tec.getId(), tec.getNombre(), tec.getUsuario(), tec.getEmail(), tec.getRol().name(), tec.isActivo()
+      );
     }
 
     return new OtDetalleDto(
@@ -186,7 +185,7 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public CrearResponse crear(OtCrearRequest req) {
-    if (ctx().rolCliente()) throw new RuntimeException("No autorizado");
+    if (ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     Cliente cliente;
     if (req.cliente().id() != null && !req.cliente().id().isBlank()) {
@@ -240,7 +239,7 @@ public class OrdenesTrabajoService {
   // ----------------------
   @Transactional
   public void cambiarEstado(String idOrCodigo, String estado) {
-    if (ctx().rolCliente()) throw new RuntimeException("No autorizado");
+    if (ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
     EstadoOt nuevo = EstadoOt.valueOf(estado);
@@ -252,15 +251,14 @@ public class OrdenesTrabajoService {
   }
 
   // ----------------------
-  // NOTAS: backoffice (interna o visible) + portal (solo visible)
+  // NOTAS
   // ----------------------
   @Transactional
   public void anadirNota(String idOrCodigo, String contenido, boolean visibleCliente) {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
     if (ctx().rolCliente()) {
-      // cliente solo puede añadir nota visible y solo a su OT
-      if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new RuntimeException("No autorizado");
+      if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new SecurityException("No autorizado");
       visibleCliente = true;
     }
 
@@ -275,14 +273,14 @@ public class OrdenesTrabajoService {
   }
 
   // ----------------------
-  // FOTOS: backoffice (visible o no) + portal (solo visible)
+  // FOTOS
   // ----------------------
   @Transactional
   public FotoDto subirFoto(String idOrCodigo, MultipartFile file, boolean visibleCliente) throws IOException {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
     if (ctx().rolCliente()) {
-      if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new RuntimeException("No autorizado");
+      if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new SecurityException("No autorizado");
       visibleCliente = true;
     }
 
@@ -309,11 +307,11 @@ public class OrdenesTrabajoService {
   }
 
   // ----------------------
-  // PRESUPUESTO (backoffice): guardar y enviar
+  // PRESUPUESTO backoffice
   // ----------------------
   @Transactional
   public PresupuestoDto guardarPresupuesto(String idOrCodigo, PresupuestoGuardarRequest req) {
-    if (ctx().rolCliente()) throw new RuntimeException("No autorizado");
+    if (ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
@@ -333,13 +331,12 @@ public class OrdenesTrabajoService {
     p = presupuestoRepo.save(p);
 
     registrarEvento(ot, EventoHistorialOt.PRESUPUESTO_GUARDADO, "Presupuesto guardado (BORRADOR)");
-
     return toPresupuestoDto(p);
   }
 
   @Transactional
   public PresupuestoDto enviarPresupuesto(String idOrCodigo) {
-    if (ctx().rolCliente()) throw new RuntimeException("No autorizado");
+    if (ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
     PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId()).orElseThrow();
@@ -349,17 +346,14 @@ public class OrdenesTrabajoService {
 
     p.setEstado(EstadoPresupuesto.ENVIADO);
     p.setSentAt(OffsetDateTime.now());
-    presupuestoRepo.save(p); // 👈 no reasignamos (evita líos con lambda)
+    presupuestoRepo.save(p);
 
     ot.setEstado(EstadoOt.PRESUPUESTO);
     otRepo.save(ot);
 
     registrarEvento(ot, EventoHistorialOt.PRESUPUESTO_ENVIADO, "Presupuesto enviado al cliente");
 
-    // ✅ Capturamos el importe en una variable effectively final
     final var importe = p.getImporte();
-
-    // Crear pago asociado si no existe (importe = presupuesto)
     pagoRepo.findByOt_Id(ot.getId()).orElseGet(() -> {
       PagoOt pago = new PagoOt();
       pago.setOt(ot);
@@ -371,16 +365,15 @@ public class OrdenesTrabajoService {
     return toPresupuestoDto(p);
   }
 
-
   // ----------------------
-  // PRESUPUESTO (cliente): aceptar/rechazar con checkbox
+  // PRESUPUESTO cliente
   // ----------------------
   @Transactional
   public void aceptarPresupuesto(String idOrCodigo, boolean acepto) {
-    if (!ctx().rolCliente()) throw new RuntimeException("No autorizado");
+    if (!ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new RuntimeException("No autorizado");
+    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new SecurityException("No autorizado");
 
     PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId()).orElseThrow();
     if (p.getEstado() != EstadoPresupuesto.ENVIADO) throw new RuntimeException("Presupuesto no aceptable en estado: " + p.getEstado().name());
@@ -392,7 +385,6 @@ public class OrdenesTrabajoService {
     p.setAceptacionAt(OffsetDateTime.now());
     presupuestoRepo.save(p);
 
-    // Flujo: al aceptar -> OT aprobada
     ot.setEstado(EstadoOt.APROBADA);
     otRepo.save(ot);
 
@@ -401,10 +393,10 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public void rechazarPresupuesto(String idOrCodigo) {
-    if (!ctx().rolCliente()) throw new RuntimeException("No autorizado");
+    if (!ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new RuntimeException("No autorizado");
+    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new SecurityException("No autorizado");
 
     PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId()).orElseThrow();
     if (p.getEstado() != EstadoPresupuesto.ENVIADO) throw new RuntimeException("Presupuesto no rechazable en estado: " + p.getEstado().name());
@@ -420,14 +412,14 @@ public class OrdenesTrabajoService {
   }
 
   // ----------------------
-  // PAGO (cliente): marcar transferencia + subir comprobante
+  // PAGO cliente
   // ----------------------
   @Transactional
   public void marcarTransferencia(String idOrCodigo) {
-    if (!ctx().rolCliente()) throw new RuntimeException("No autorizado");
+    if (!ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new RuntimeException("No autorizado");
+    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new SecurityException("No autorizado");
 
     PagoOt p = pagoRepo.findByOt_Id(ot.getId()).orElseGet(() -> {
       PagoOt x = new PagoOt();
@@ -445,10 +437,10 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public PagoDto subirComprobantePago(String idOrCodigo, MultipartFile file) throws IOException {
-    if (!ctx().rolCliente()) throw new RuntimeException("No autorizado");
+    if (!ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new RuntimeException("No autorizado");
+    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new SecurityException("No autorizado");
 
     PagoOt p = pagoRepo.findByOt_Id(ot.getId()).orElseThrow();
 
@@ -463,59 +455,110 @@ public class OrdenesTrabajoService {
     p = pagoRepo.save(p);
 
     registrarEvento(ot, EventoHistorialOt.PAGO_COMPROBANTE_SUBIDO, "Comprobante de pago subido (" + url + ")");
-
     return new PagoDto(p.getId(), p.getEstado().name(), p.getImporte(), p.getComprobanteUrl());
   }
 
   // ----------------------
-  // CITAS (cliente): reservar / reprogramar
+  // PAGO backoffice (idempotente)
+  // ----------------------
+  @Transactional
+  public void confirmarPagoRecibido(String idOrCodigo) {
+    if (!ctx().rolBackoffice()) throw new SecurityException("No autorizado");
+
+    OrdenTrabajo ot = resolverOt(idOrCodigo);
+
+    PagoOt p = pagoRepo.findByOt_Id(ot.getId()).orElseGet(() -> {
+      PagoOt x = new PagoOt();
+      x.setOt(ot);
+      var presupuesto = presupuestoRepo.findByOt_Id(ot.getId()).orElse(null);
+      x.setImporte(presupuesto != null ? presupuesto.getImporte() : java.math.BigDecimal.ZERO);
+      x.setEstado(EstadoPagoOt.PENDIENTE);
+      return pagoRepo.save(x);
+    });
+
+    EstadoPagoOt estadoConfirmado = resolveEstadoPagoConfirmado();
+
+    // ✅ Si ya estaba confirmado, NO repetir evento ni guardar de nuevo
+    if (p.getEstado() == estadoConfirmado) {
+      return;
+    }
+
+    p.setEstado(estadoConfirmado);
+    pagoRepo.save(p);
+
+    registrarEvento(ot, EventoHistorialOt.PAGO_MARCADO_TRANSFERENCIA, "Backoffice confirmó pago recibido");
+  }
+
+  private EstadoPagoOt resolveEstadoPagoConfirmado() {
+    for (String n : List.of("PAGADO", "CONFIRMADO", "RECIBIDO")) {
+      try {
+        return EstadoPagoOt.valueOf(n);
+      } catch (IllegalArgumentException ignored) {}
+    }
+    return EstadoPagoOt.MARCADO_TRANSFERENCIA;
+  }
+
+  // ----------------------
+  // CITAS
   // ----------------------
   @Transactional
   public CitaDto reservarCita(String idOrCodigo, CitaRequest req) {
-    if (!ctx().rolCliente()) throw new RuntimeException("No autorizado");
-
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new RuntimeException("No autorizado");
+
+    if (ctx().rolCliente()) {
+      if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new SecurityException("No autorizado");
+    } else if (!ctx().rolBackoffice()) {
+      throw new SecurityException("No autorizado");
+    }
+
+    OffsetDateTime inicio = OffsetDateTime.parse(req.inicio());
+    OffsetDateTime fin = OffsetDateTime.parse(req.fin());
+    if (!fin.isAfter(inicio)) throw new IllegalArgumentException("La fecha/hora fin debe ser mayor que inicio");
 
     CitaOt c = new CitaOt();
     c.setOt(ot);
-    c.setInicio(OffsetDateTime.parse(req.inicio()));
-    c.setFin(OffsetDateTime.parse(req.fin()));
+    c.setInicio(inicio);
+    c.setFin(fin);
     c.setEstado(EstadoCita.PROGRAMADA);
     c = citaRepo.save(c);
 
-    registrarEvento(ot, EventoHistorialOt.CITA_RESERVADA, "Cita reservada: " + c.getInicio());
-
+    registrarEvento(ot, EventoHistorialOt.CITA_RESERVADA, (ctx().rolCliente() ? "Cliente" : "Backoffice") + " programó cita: " + c.getInicio());
     return new CitaDto(c.getId(), c.getInicio(), c.getFin(), c.getEstado().name());
   }
 
   @Transactional
   public CitaDto reprogramarCita(UUID citaId, CitaRequest req) {
-    if (!ctx().rolCliente()) throw new RuntimeException("No autorizado");
-
     CitaOt c = citaRepo.findById(citaId).orElseThrow();
     OrdenTrabajo ot = c.getOt();
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new RuntimeException("No autorizado");
 
-    c.setInicio(OffsetDateTime.parse(req.inicio()));
-    c.setFin(OffsetDateTime.parse(req.fin()));
+    if (ctx().rolCliente()) {
+      if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new SecurityException("No autorizado");
+    } else if (!ctx().rolBackoffice()) {
+      throw new SecurityException("No autorizado");
+    }
+
+    OffsetDateTime inicio = OffsetDateTime.parse(req.inicio());
+    OffsetDateTime fin = OffsetDateTime.parse(req.fin());
+    if (!fin.isAfter(inicio)) throw new IllegalArgumentException("La fecha/hora fin debe ser mayor que inicio");
+
+    c.setInicio(inicio);
+    c.setFin(fin);
     c.setEstado(EstadoCita.REPROGRAMADA);
     c = citaRepo.save(c);
 
-    registrarEvento(ot, EventoHistorialOt.CITA_REPROGRAMADA, "Cita reprogramada: " + c.getInicio());
-
+    registrarEvento(ot, EventoHistorialOt.CITA_REPROGRAMADA, (ctx().rolCliente() ? "Cliente" : "Backoffice") + " reprogramó cita: " + c.getInicio());
     return new CitaDto(c.getId(), c.getInicio(), c.getFin(), c.getEstado().name());
   }
 
   // ----------------------
-  // MENSAJERÍA (cliente y backoffice)
+  // MENSAJERÍA
   // ----------------------
   @Transactional
   public MensajeDto enviarMensaje(String idOrCodigo, String contenido) {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
-    if (ctx().rolCliente()) {
-      if (!ot.getCliente().getId().equals(ctx().clienteId())) throw new RuntimeException("No autorizado");
+    if (ctx().rolCliente() && !ot.getCliente().getId().equals(ctx().clienteId())) {
+      throw new SecurityException("No autorizado");
     }
 
     MensajeOt m = new MensajeOt();
@@ -535,66 +578,45 @@ public class OrdenesTrabajoService {
     m = mensajeRepo.save(m);
 
     registrarEvento(ot, EventoHistorialOt.MENSAJE_ENVIADO, "Mensaje enviado");
-
     return new MensajeDto(m.getId(), m.getRemitenteTipo().name(), m.getRemitenteNombre(), m.getContenido(), m.getCreatedAt());
   }
-  
-	//=========================
-	//CREAR OT DESDE TICKET (backoffice)
-	//=========================
-	@Transactional
-	public record CrearDesdeTicketResponse(UUID id, String codigo) {}
-	
-	@Transactional
-	public CrearDesdeTicketResponse crearDesdeTicket(TicketSolicitud ticket) {
-	 // Este método lo llama TicketsService (backoffice) y ya valida rol.
-	 Taller t = tallerRepo.findById(1L).orElseThrow();
-	 String codigo = generarCodigo(t.getPrefijoOt());
-	
-	 // Defaults seguros (ajusta si quieres)
-	 TipoOt tipo;
-	 PrioridadOt prioridad;
-	
-	 try { tipo = TipoOt.valueOf("DOMICILIO"); }
-	 catch (Exception e) { tipo = TipoOt.values()[0]; }
-	
-	 try { prioridad = PrioridadOt.valueOf("MEDIA"); }
-	 catch (Exception e) { prioridad = PrioridadOt.values()[0]; }
-	
-	 OrdenTrabajo ot = new OrdenTrabajo();
-	 ot.setCodigo(codigo);
-	 ot.setCliente(ticket.getCliente());
-	 ot.setTecnico(null);
-	 ot.setTipo(tipo);
-	 ot.setPrioridad(prioridad);
-	
-	 String desc = "Ticket: " + ticket.getAsunto() + "\n\n" + ticket.getDescripcion();
-	 ot.setDescripcion(desc);
-	
-	 ot.setEstado(EstadoOt.RECIBIDA);
-	 ot = otRepo.save(ot);
-	
-	 registrarEvento(ot, EventoHistorialOt.OT_CREADA,
-	     "OT creada desde ticket: " + ticket.getAsunto());
-	
-	 return new CrearDesdeTicketResponse(ot.getId(), ot.getCodigo());
-	}
 
-  
+  // =========================
+  // CREAR OT DESDE TICKET
+  // =========================
+  public record CrearDesdeTicketResponse(UUID id, String codigo) {}
+
+  @Transactional
+  public CrearDesdeTicketResponse crearDesdeTicket(TicketSolicitud ticket) {
+    Taller t = tallerRepo.findById(1L).orElseThrow();
+    String codigo = generarCodigo(t.getPrefijoOt());
+
+    TipoOt tipo;
+    PrioridadOt prioridad;
+    try { tipo = TipoOt.valueOf("DOMICILIO"); } catch (Exception e) { tipo = TipoOt.values()[0]; }
+    try { prioridad = PrioridadOt.valueOf("MEDIA"); } catch (Exception e) { prioridad = PrioridadOt.values()[0]; }
+
+    OrdenTrabajo ot = new OrdenTrabajo();
+    ot.setCodigo(codigo);
+    ot.setCliente(ticket.getCliente());
+    ot.setTecnico(null);
+    ot.setTipo(tipo);
+    ot.setPrioridad(prioridad);
+    ot.setDescripcion("Ticket: " + ticket.getAsunto() + "\n\n" + ticket.getDescripcion());
+    ot.setEstado(EstadoOt.RECIBIDA);
+    ot = otRepo.save(ot);
+
+    registrarEvento(ot, EventoHistorialOt.OT_CREADA, "OT creada desde ticket: " + ticket.getAsunto());
+    return new CrearDesdeTicketResponse(ot.getId(), ot.getCodigo());
+  }
 
   // ----------------------
   // Helpers
   // ----------------------
-
   private PresupuestoDto toPresupuestoDto(PresupuestoOt p) {
     return new PresupuestoDto(
-        p.getId(),
-        p.getEstado().name(),
-        p.getImporte(),
-        p.getDetalle(),
-        p.isAceptacionCheck(),
-        p.getSentAt(),
-        p.getRespondedAt()
+        p.getId(), p.getEstado().name(), p.getImporte(), p.getDetalle(),
+        p.isAceptacionCheck(), p.getSentAt(), p.getRespondedAt()
     );
   }
 
@@ -682,6 +704,7 @@ public class OrdenesTrabajoService {
     }
 
     boolean rolCliente() { return "CLIENTE".equalsIgnoreCase(rol); }
+    boolean rolBackoffice() { return "ADMIN".equalsIgnoreCase(rol) || "TECNICO".equalsIgnoreCase(rol); }
     UUID clienteId() { return UUID.fromString(sub); }
     UUID usuarioId() { return UUID.fromString(sub); }
   }
