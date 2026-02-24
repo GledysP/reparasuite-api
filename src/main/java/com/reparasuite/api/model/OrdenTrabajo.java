@@ -28,6 +28,10 @@ public class OrdenTrabajo {
   @Column(nullable = false)
   private PrioridadOt prioridad;
 
+  // ✅ NUEVO: equipo (simple, visible en listas y detalle)
+  @Column(length = 255)
+  private String equipo;
+
   @Column(nullable = false, length = 4000)
   private String descripcion;
 
@@ -70,6 +74,7 @@ public class OrdenTrabajo {
   public EstadoOt getEstado() { return estado; }
   public TipoOt getTipo() { return tipo; }
   public PrioridadOt getPrioridad() { return prioridad; }
+  public String getEquipo() { return equipo; } // ✅
   public String getDescripcion() { return descripcion; }
   public Cliente getCliente() { return cliente; }
   public Usuario getTecnico() { return tecnico; }
@@ -83,6 +88,7 @@ public class OrdenTrabajo {
   public void setEstado(EstadoOt estado) { this.estado = estado; }
   public void setTipo(TipoOt tipo) { this.tipo = tipo; }
   public void setPrioridad(PrioridadOt prioridad) { this.prioridad = prioridad; }
+  public void setEquipo(String equipo) { this.equipo = equipo; } // ✅
   public void setDescripcion(String descripcion) { this.descripcion = descripcion; }
   public void setCliente(Cliente cliente) { this.cliente = cliente; }
   public void setTecnico(Usuario tecnico) { this.tecnico = tecnico; }

@@ -1,8 +1,11 @@
 package com.reparasuite.api.controller;
 
+import java.io.IOException;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.reparasuite.api.dto.*;
 import com.reparasuite.api.service.TicketsService;
@@ -33,6 +36,15 @@ public class TicketsController {
   @PostMapping
   public ResponseEntity<TicketDetalleDto> crear(@Validated @RequestBody TicketCrearRequest req) {
     return ResponseEntity.ok(service.crear(req));
+  }
+
+  // ✅ NUEVO: subir foto al ticket (portal cliente)
+  @PostMapping("/{id}/fotos")
+  public ResponseEntity<TicketFotoDto> subirFoto(
+      @PathVariable String id,
+      @RequestParam("file") MultipartFile file
+  ) throws IOException {
+    return ResponseEntity.ok(service.subirFotoCliente(id, file));
   }
 
   @PostMapping("/{id}/mensajes")

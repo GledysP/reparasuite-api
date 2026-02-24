@@ -12,5 +12,19 @@ public record TicketDetalleDto(
     List<MensajeDto> mensajes,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt,
-    UUID ordenTrabajoId // ✅ NUEVO
+    UUID ordenTrabajoId,
+
+    // ✅ snapshots del cliente (para backoffice/prefill)
+    String clienteNombre,
+    String clienteTelefono,
+    String clienteEmail,
+
+    // ✅ campos estructurados
+    String equipo,
+    String descripcionFalla,
+    String tipoServicioSugerido,
+    String direccion,
+
+    // ✅ fotos
+    List<TicketFotoDto> fotos
 ) {}

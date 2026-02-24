@@ -18,7 +18,7 @@ public class TicketSolicitud {
   private Cliente cliente;
 
   @Enumerated(EnumType.STRING)
-  @Column(nullable = false)
+  @Column(nullable = false, length = 40)
   private EstadoTicket estado;
 
   @Column(nullable = false, length = 200)
@@ -27,9 +27,32 @@ public class TicketSolicitud {
   @Column(nullable = false, length = 4000)
   private String descripcion;
 
-  // ✅ NUEVO: OT creada a partir del ticket (preorden -> OT)
+  // ✅ vínculo OT
   @Column(name = "orden_trabajo_id", columnDefinition = "uuid")
   private UUID ordenTrabajoId;
+
+  // ✅ snapshot de cliente (para trazabilidad / prefill)
+  @Column(name = "cliente_nombre_snapshot", length = 200)
+  private String clienteNombreSnapshot;
+
+  @Column(name = "cliente_telefono_snapshot", length = 50)
+  private String clienteTelefonoSnapshot;
+
+  @Column(name = "cliente_email_snapshot", length = 200)
+  private String clienteEmailSnapshot;
+
+  // ✅ campos estructurados del ticket (MVP fase 1)
+  @Column(name = "equipo", length = 200)
+  private String equipo;
+
+  @Column(name = "descripcion_falla", length = 4000)
+  private String descripcionFalla;
+
+  @Column(name = "tipo_servicio_sugerido", length = 20)
+  private String tipoServicioSugerido;
+
+  @Column(name = "direccion", length = 500)
+  private String direccion;
 
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
@@ -50,19 +73,39 @@ public class TicketSolicitud {
     updatedAt = OffsetDateTime.now();
   }
 
+  // Getters
   public UUID getId() { return id; }
   public Cliente getCliente() { return cliente; }
   public EstadoTicket getEstado() { return estado; }
   public String getAsunto() { return asunto; }
   public String getDescripcion() { return descripcion; }
+  public UUID getOrdenTrabajoId() { return ordenTrabajoId; }
+  public String getClienteNombreSnapshot() { return clienteNombreSnapshot; }
+  public String getClienteTelefonoSnapshot() { return clienteTelefonoSnapshot; }
+  public String getClienteEmailSnapshot() { return clienteEmailSnapshot; }
+  public String getEquipo() { return equipo; }
+  public String getDescripcionFalla() { return descripcionFalla; }
+  public String getTipoServicioSugerido() { return tipoServicioSugerido; }
+  public String getDireccion() { return direccion; }
   public OffsetDateTime getCreatedAt() { return createdAt; }
   public OffsetDateTime getUpdatedAt() { return updatedAt; }
 
-  public UUID getOrdenTrabajoId() { return ordenTrabajoId; }
-  public void setOrdenTrabajoId(UUID ordenTrabajoId) { this.ordenTrabajoId = ordenTrabajoId; }
-
+  // Setters
   public void setCliente(Cliente cliente) { this.cliente = cliente; }
   public void setEstado(EstadoTicket estado) { this.estado = estado; }
   public void setAsunto(String asunto) { this.asunto = asunto; }
   public void setDescripcion(String descripcion) { this.descripcion = descripcion; }
+  public void setOrdenTrabajoId(UUID ordenTrabajoId) { this.ordenTrabajoId = ordenTrabajoId; }
+
+  public void setClienteNombreSnapshot(String clienteNombreSnapshot) { this.clienteNombreSnapshot = clienteNombreSnapshot; }
+  public void setClienteTelefonoSnapshot(String clienteTelefonoSnapshot) { this.clienteTelefonoSnapshot = clienteTelefonoSnapshot; }
+  public void setClienteEmailSnapshot(String clienteEmailSnapshot) { this.clienteEmailSnapshot = clienteEmailSnapshot; }
+
+  public void setEquipo(String equipo) { this.equipo = equipo; }
+  public void setDescripcionFalla(String descripcionFalla) { this.descripcionFalla = descripcionFalla; }
+  public void setTipoServicioSugerido(String tipoServicioSugerido) { this.tipoServicioSugerido = tipoServicioSugerido; }
+  public void setDireccion(String direccion) { this.direccion = direccion; }
+
+  public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
+  public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
 }

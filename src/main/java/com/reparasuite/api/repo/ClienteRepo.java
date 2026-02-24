@@ -12,6 +12,5 @@ import com.reparasuite.api.model.Cliente;
 public interface ClienteRepo extends JpaRepository<Cliente, UUID> {
   Page<Cliente> findByNombreContainingIgnoreCase(String nombre, Pageable pageable);
 
-  // ✅ NUEVO
   Optional<Cliente> findByEmailIgnoreCase(String email);
 }

@@ -9,7 +9,11 @@ public record OtListaItemDto(
     String estado,
     String tipo,
     String prioridad,
+
+    // ✅ NUEVO
+    String equipo,
+
     String clienteNombre,
     String tecnicoNombre,
     OffsetDateTime updatedAt
-) { }
+) {}

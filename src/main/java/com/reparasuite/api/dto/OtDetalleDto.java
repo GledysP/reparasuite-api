@@ -10,6 +10,10 @@ public record OtDetalleDto(
     String estado,
     String tipo,
     String prioridad,
+
+    // ✅ NUEVO
+    String equipo,
+
     String descripcion,
     ClienteResumenDto cliente,
     UsuarioResumenDto tecnico,
@@ -25,4 +29,4 @@ public record OtDetalleDto(
     List<MensajeDto> mensajes,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
-) { }
+) {}

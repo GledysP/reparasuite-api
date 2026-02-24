@@ -50,7 +50,8 @@ public class DataSeeder {
       // Clientes
       Cliente c1 = crearClienteSiNoExiste(clienteRepo, encoder, "Carlos Pérez", "611000111", "carlos@mail.com", "cliente123");
       Cliente c2 = crearClienteSiNoExiste(clienteRepo, encoder, "María López", "622000222", "maria@mail.com", "cliente123");
-      Cliente c3 = crearClienteSiNoExiste(clienteRepo, encoder, "Gledys", "600123456", "gle@gmail.com", "123456");
+      crearClienteSiNoExiste(clienteRepo, encoder, "Gledys", "600123456", "gle@gmail.com", "123456");
+
       // OTs demo
       if (otRepo.count() == 0) {
 
@@ -123,16 +124,63 @@ public class DataSeeder {
 
   private Cliente crearClienteSiNoExiste(ClienteRepo repo, PasswordEncoder encoder,
                                         String nombre, String tel, String email, String passPortal) {
-    Cliente existing = repo.findAll().stream()
-        .filter(c -> c.getNombre().equalsIgnoreCase(nombre))
-        .findFirst().orElse(null);
 
-    if (existing != null) return existing;
+    // ✅ Normalizar email para evitar duplicados por mayúsculas/espacios
+    String emailNorm = (email == null || email.isBlank()) ? null : email.trim().toLowerCase();
 
+    // ✅ 1) Primero buscar por email (clave lógica/única)
+    if (emailNorm != null) {
+      var byEmail = repo.findByEmailIgnoreCase(emailNorm);
+      if (byEmail.isPresent()) {
+        Cliente c = byEmail.get();
+
+        // (Opcional útil) completar datos faltantes si existen en seed
+        if ((c.getNombre() == null || c.getNombre().isBlank()) && nombre != null && !nombre.isBlank()) {
+          c.setNombre(nombre);
+        }
+        if ((c.getTelefono() == null || c.getTelefono().isBlank()) && tel != null && !tel.isBlank()) {
+          c.setTelefono(tel);
+        }
+        if (Boolean.FALSE.equals(c.isPortalActivo())) {
+          c.setPortalActivo(true);
+        }
+        if (c.getPasswordHashPortal() == null || c.getPasswordHashPortal().isBlank()) {
+          c.setPasswordHashPortal(encoder.encode(passPortal));
+        }
+
+        return repo.save(c);
+      }
+    }
+
+    // ✅ 2) Fallback por nombre (por si tienes seed viejo sin email)
+    Cliente existingByNombre = repo.findAll().stream()
+        .filter(c -> c.getNombre() != null && nombre != null && c.getNombre().equalsIgnoreCase(nombre))
+        .findFirst()
+        .orElse(null);
+
+    if (existingByNombre != null) {
+      // Si existe por nombre pero sin email, lo completamos
+      if ((existingByNombre.getEmail() == null || existingByNombre.getEmail().isBlank()) && emailNorm != null) {
+        existingByNombre.setEmail(emailNorm);
+      }
+      if ((existingByNombre.getTelefono() == null || existingByNombre.getTelefono().isBlank()) && tel != null && !tel.isBlank()) {
+        existingByNombre.setTelefono(tel);
+      }
+      if (Boolean.FALSE.equals(existingByNombre.isPortalActivo())) {
+        existingByNombre.setPortalActivo(true);
+      }
+      if (existingByNombre.getPasswordHashPortal() == null || existingByNombre.getPasswordHashPortal().isBlank()) {
+        existingByNombre.setPasswordHashPortal(encoder.encode(passPortal));
+      }
+
+      return repo.save(existingByNombre);
+    }
+
+    // ✅ 3) Crear nuevo cliente
     Cliente c = new Cliente();
     c.setNombre(nombre);
     c.setTelefono(tel);
-    c.setEmail(email);
+    c.setEmail(emailNorm);
 
     // Portal activo
     c.setPortalActivo(true);
