@@ -9,4 +9,5 @@ import com.reparasuite.api.model.PresupuestoOt;
 
 public interface PresupuestoOtRepo extends JpaRepository<PresupuestoOt, UUID> {
   Optional<PresupuestoOt> findByOt_Id(UUID otId);
+  void deleteByOt_Id(UUID otId);
 }

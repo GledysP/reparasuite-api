@@ -21,7 +21,6 @@ public class OrdenesTrabajoController {
     this.service = service;
   }
 
-  // Backoffice list (✅ con filtros)
   @GetMapping
   public ApiListaResponse<OtListaItemDto> listar(
       @RequestParam(defaultValue = "") String query,
@@ -35,42 +34,47 @@ public class OrdenesTrabajoController {
     return service.listar(query, estado, tipo, prioridad, tecnicoId, page, size);
   }
 
-  // Shared detail (cliente verá filtrado)
   @GetMapping("/{id}")
   public OtDetalleDto obtener(@PathVariable String id) {
     return service.obtener(id);
   }
 
-  // Backoffice create
   @PostMapping
   public ResponseEntity<?> crear(@Validated @RequestBody OtCrearRequest req) {
     return ResponseEntity.ok(service.crear(req));
   }
 
-  // Backoffice change status
+  @DeleteMapping("/{id}")
+  public ResponseEntity<?> eliminar(@PathVariable String id) {
+    service.eliminar(id);
+    return ResponseEntity.noContent().build();
+  }
+
   @PatchMapping("/{id}/estado")
   public ResponseEntity<?> cambiarEstado(@PathVariable String id, @Validated @RequestBody OtCambiarEstadoRequest req) {
     service.cambiarEstado(id, req.estado());
     return ResponseEntity.noContent().build();
   }
 
-  // Notes (cliente puede usarlo; será visibleCliente=true forzado)
   @PostMapping("/{id}/notas")
-  public ResponseEntity<?> anadirNota(@PathVariable String id, @Validated @RequestBody OtNotaRequest req,
-                                      @RequestParam(defaultValue = "false") boolean visibleCliente) {
+  public ResponseEntity<?> anadirNota(
+      @PathVariable String id,
+      @Validated @RequestBody OtNotaRequest req,
+      @RequestParam(defaultValue = "false") boolean visibleCliente
+  ) {
     service.anadirNota(id, req.contenido(), visibleCliente);
     return ResponseEntity.noContent().build();
   }
 
-  // Fotos (cliente puede usarlo; será visibleCliente=true forzado)
   @PostMapping("/{id}/fotos")
-  public ResponseEntity<FotoDto> subirFoto(@PathVariable String id,
-                                          @RequestParam("file") MultipartFile file,
-                                          @RequestParam(defaultValue = "false") boolean visibleCliente) throws IOException {
+  public ResponseEntity<FotoDto> subirFoto(
+      @PathVariable String id,
+      @RequestParam("file") MultipartFile file,
+      @RequestParam(defaultValue = "false") boolean visibleCliente
+  ) throws IOException {
     return ResponseEntity.ok(service.subirFoto(id, file, visibleCliente));
   }
 
-  // Presupuesto backoffice
   @PostMapping("/{id}/presupuesto")
   public ResponseEntity<PresupuestoDto> guardarPresupuesto(@PathVariable String id, @Validated @RequestBody PresupuestoGuardarRequest req) {
     return ResponseEntity.ok(service.guardarPresupuesto(id, req));
@@ -81,7 +85,6 @@ public class OrdenesTrabajoController {
     return ResponseEntity.ok(service.enviarPresupuesto(id));
   }
 
-  // Presupuesto cliente
   @PostMapping("/{id}/presupuesto/aceptar")
   public ResponseEntity<?> aceptarPresupuesto(@PathVariable String id, @Validated @RequestBody PresupuestoAceptarRequest req) {
     service.aceptarPresupuesto(id, req.acepto());
@@ -94,7 +97,6 @@ public class OrdenesTrabajoController {
     return ResponseEntity.noContent().build();
   }
 
-  // Pago cliente (MVP)
   @PostMapping("/{id}/pago/transferencia")
   public ResponseEntity<?> marcarTransferencia(@PathVariable String id) {
     service.marcarTransferencia(id);
@@ -106,14 +108,12 @@ public class OrdenesTrabajoController {
     return ResponseEntity.ok(service.subirComprobantePago(id, file));
   }
 
-  // ✅ Pago backoffice (confirmar recepción)
   @PostMapping("/{id}/pago/confirmar")
   public ResponseEntity<?> confirmarPagoRecibido(@PathVariable String id) {
     service.confirmarPagoRecibido(id);
     return ResponseEntity.noContent().build();
   }
 
-  // Citas (cliente / backoffice según rol)
   @PostMapping("/{id}/citas")
   public ResponseEntity<CitaDto> reservarCita(@PathVariable String id, @Validated @RequestBody CitaRequest req) {
     return ResponseEntity.ok(service.reservarCita(id, req));
@@ -124,7 +124,6 @@ public class OrdenesTrabajoController {
     return ResponseEntity.ok(service.reprogramarCita(UUID.fromString(citaId), req));
   }
 
-  // Mensajería (cliente y backoffice)
   @PostMapping("/{id}/mensajes")
   public ResponseEntity<MensajeDto> enviarMensaje(@PathVariable String id, @Validated @RequestBody MensajeEnviarRequest req) {
     return ResponseEntity.ok(service.enviarMensaje(id, req.contenido()));

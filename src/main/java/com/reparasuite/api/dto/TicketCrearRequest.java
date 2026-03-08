@@ -28,5 +28,8 @@ public record TicketCrearRequest(
     String tipoServicioSugerido,
 
     @Size(max = 500)
-    String direccion
+    String direccion,
+    
+    @Size(max = 4000)
+    String observaciones
 ) { }

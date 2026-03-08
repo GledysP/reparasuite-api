@@ -9,4 +9,5 @@ import com.reparasuite.api.model.TicketMensaje;
 
 public interface TicketMensajeRepo extends JpaRepository<TicketMensaje, UUID> {
   List<TicketMensaje> findByTicket_IdOrderByCreatedAtAsc(UUID ticketId);
+  void deleteByTicket_Id(UUID ticketId);
 }

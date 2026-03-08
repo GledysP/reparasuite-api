@@ -1,5 +1,6 @@
 package com.reparasuite.api.repo;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -11,15 +12,15 @@ import com.reparasuite.api.model.TicketSolicitud;
 
 public interface TicketSolicitudRepo extends JpaRepository<TicketSolicitud, UUID> {
   Page<TicketSolicitud> findByCliente_Id(UUID clienteId, Pageable pageable);
-
-  // Backoffice
   Page<TicketSolicitud> findAll(Pageable pageable);
-
   Page<TicketSolicitud> findByEstado(EstadoTicket estado, Pageable pageable);
-
   Page<TicketSolicitud> findByAsuntoContainingIgnoreCaseOrDescripcionContainingIgnoreCase(
       String asunto,
       String descripcion,
       Pageable pageable
   );
+
+  long countByCliente_Id(UUID clienteId);
+
+  List<TicketSolicitud> findByOrdenTrabajoId(UUID ordenTrabajoId);
 }

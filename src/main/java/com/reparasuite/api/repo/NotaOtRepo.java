@@ -9,4 +9,5 @@ import com.reparasuite.api.model.NotaOt;
 
 public interface NotaOtRepo extends JpaRepository<NotaOt, UUID> {
   List<NotaOt> findByOt_IdOrderByCreatedAtDesc(UUID otId);
+  void deleteByOt_Id(UUID otId);
 }

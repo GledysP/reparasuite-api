@@ -9,4 +9,5 @@ import com.reparasuite.api.model.FotoOt;
 
 public interface FotoOtRepo extends JpaRepository<FotoOt, UUID> {
   List<FotoOt> findByOt_IdOrderByCreatedAtDesc(UUID otId);
+  void deleteByOt_Id(UUID otId);
 }

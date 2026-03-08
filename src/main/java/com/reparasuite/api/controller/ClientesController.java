@@ -2,6 +2,7 @@ package com.reparasuite.api.controller;
 
 import java.util.UUID;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import com.reparasuite.api.dto.*;
@@ -31,7 +32,6 @@ public class ClientesController {
     return service.obtener(UUID.fromString(id));
   }
 
-  // ✅ NUEVO: /clientes/{id}/ordenes-trabajo
   @GetMapping("/{id}/ordenes-trabajo")
   public ApiListaResponse<ClienteOtItemDto> ordenesTrabajo(
       @PathVariable String id,
@@ -39,5 +39,11 @@ public class ClientesController {
       @RequestParam(defaultValue = "20") int size
   ) {
     return service.ordenesTrabajo(UUID.fromString(id), page, size);
+  }
+
+  @DeleteMapping("/{id}")
+  public ResponseEntity<?> eliminar(@PathVariable String id) {
+    service.eliminar(UUID.fromString(id));
+    return ResponseEntity.noContent().build();
   }
 }

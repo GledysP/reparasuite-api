@@ -29,8 +29,6 @@ public class TicketsService {
   private final TicketFotoRepo fotoRepo;
   private final ClienteRepo clienteRepo;
   private final OrdenesTrabajoService ordenesTrabajoService;
-
-  // ✅ NUEVO: para devolver código OT cuando el ticket ya estaba vinculado
   private final OrdenTrabajoRepo otRepo;
 
   @Value("${reparasuite.upload-dir}")
@@ -91,25 +89,30 @@ public class TicketsService {
     String equipoAsunto = limpio(req.asunto());
     String descripcionLegacy = limpio(req.descripcion());
 
-    String equipo = limpioNullable(readEquipo(req));
-    String falla = limpioNullable(readDescripcionFalla(req));
-    String tipoSug = normalizarTipoServicio(readTipoServicioSugerido(req));
-    String direccion = limpioNullable(readDireccion(req));
+    String equipo = limpioNullable(req.equipo());
+    String falla = limpioNullable(req.descripcionFalla());
+    String tipoSug = normalizarTipoServicio(req.tipoServicioSugerido());
+    String direccion = limpioNullable(req.direccion());
+    String observaciones = limpioNullable(req.observaciones());
 
     if (!notBlank(equipo) && notBlank(equipoAsunto)) {
       equipo = equipoAsunto;
     }
 
     t.setAsunto(equipoAsunto);
+    t.setEquipo(equipo);
+    t.setDescripcionFalla(falla);
+    t.setTipoServicioSugerido(tipoSug);
+    t.setDireccion(direccion);
+    t.setObservaciones(observaciones);
 
-    safeSetEquipo(t, equipo);
-    safeSetDescripcionFalla(t, falla);
-    safeSetTipoServicioSugerido(t, tipoSug);
-    safeSetDireccion(t, direccion);
+    t.setClienteNombreSnapshot(c.getNombre());
+    t.setClienteTelefonoSnapshot(c.getTelefono());
+    t.setClienteEmailSnapshot(c.getEmail());
 
-    safeSetClienteSnapshot(t, c);
-
-    String descripcionFinal = construirDescripcionTicket(descripcionLegacy, equipo, falla, tipoSug, direccion);
+    String descripcionFinal = construirDescripcionTicket(
+        descripcionLegacy, equipo, falla, tipoSug, direccion, observaciones
+    );
     t.setDescripcion(descripcionFinal);
 
     t = ticketRepo.save(t);
@@ -142,7 +145,6 @@ public class TicketsService {
     m.setContenido(req.contenido());
     msgRepo.save(m);
 
-    t.setEstado(t.getEstado());
     ticketRepo.save(t);
   }
 
@@ -175,9 +177,9 @@ public class TicketsService {
             t.getAsunto(),
             t.getUpdatedAt(),
             t.getCliente().getId(),
-            coalesce(readClienteNombreSnapshot(t), t.getCliente().getNombre()),
-            coalesce(readClienteEmailSnapshot(t), t.getCliente().getEmail()),
-            readOrdenTrabajoId(t) // ✅ NUEVO
+            coalesce(t.getClienteNombreSnapshot(), t.getCliente().getNombre()),
+            coalesce(t.getClienteEmailSnapshot(), t.getCliente().getEmail()),
+            t.getOrdenTrabajoId()
         ))
         .toList();
 
@@ -203,7 +205,6 @@ public class TicketsService {
     m.setContenido(req.contenido());
     msgRepo.save(m);
 
-    t.setEstado(t.getEstado());
     ticketRepo.save(t);
   }
 
@@ -221,8 +222,7 @@ public class TicketsService {
 
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
 
-    // ✅ idempotente: si ya está ligada, devuelve la misma (ahora con código si existe)
-    UUID otExistenteId = readOrdenTrabajoId(t);
+    UUID otExistenteId = t.getOrdenTrabajoId();
     if (otExistenteId != null) {
       String codigoExistente = otRepo.findById(otExistenteId)
           .map(OrdenTrabajo::getCodigo)
@@ -233,9 +233,8 @@ public class TicketsService {
 
     var creada = ordenesTrabajoService.crearDesdeTicket(t);
 
-    safeSetOrdenTrabajoId(t, creada.id());
+    t.setOrdenTrabajoId(creada.id());
 
-    // ✅ cambia estado del ticket para que no quede “pendiente” lógicamente
     if (t.getEstado() == EstadoTicket.ABIERTO) {
       t.setEstado(EstadoTicket.EN_REVISION);
     }
@@ -283,16 +282,17 @@ public class TicketsService {
         mensajes,
         t.getCreatedAt(),
         t.getUpdatedAt(),
-        readOrdenTrabajoId(t),
+        t.getOrdenTrabajoId(),
 
-        readClienteNombreSnapshot(t),
-        readClienteTelefonoSnapshot(t),
-        readClienteEmailSnapshot(t),
+        t.getClienteNombreSnapshot(),
+        t.getClienteTelefonoSnapshot(),
+        t.getClienteEmailSnapshot(),
 
-        readEquipoField(t),
-        readDescripcionFallaField(t),
-        readTipoServicioSugeridoField(t),
-        readDireccionField(t),
+        t.getEquipo(),
+        t.getDescripcionFalla(),
+        t.getTipoServicioSugerido(),
+        t.getDireccion(),
+        t.getObservaciones(),
 
         fotos
     );
@@ -329,7 +329,6 @@ public class TicketsService {
     foto.setNombreOriginal(file.getOriginalFilename());
     foto = fotoRepo.save(foto);
 
-    ticket.setEstado(ticket.getEstado());
     ticketRepo.save(ticket);
 
     return new TicketFotoDto(foto.getId(), foto.getUrl(), foto.getNombreOriginal(), foto.getCreatedAt());
@@ -380,12 +379,16 @@ public class TicketsService {
       String equipo,
       String falla,
       String tipoServicioSugerido,
-      String direccion
+      String direccion,
+      String observaciones
   ) {
-    boolean hayEstructurado = notBlank(falla) || notBlank(tipoServicioSugerido) || notBlank(direccion);
+    boolean hayEstructurado =
+        notBlank(falla) || notBlank(tipoServicioSugerido) || notBlank(direccion) || notBlank(observaciones);
 
     if (!hayEstructurado) {
-      return notBlank(descripcionLegacy) ? descripcionLegacy : (notBlank(equipo) ? "Falla pendiente de detallar" : "");
+      return notBlank(descripcionLegacy)
+          ? descripcionLegacy
+          : (notBlank(equipo) ? "Falla pendiente de detallar" : "");
     }
 
     StringBuilder sb = new StringBuilder();
@@ -400,6 +403,10 @@ public class TicketsService {
 
     if (notBlank(direccion)) {
       sb.append("Dirección / ubicación: ").append(direccion.trim()).append("\n");
+    }
+
+    if (notBlank(observaciones)) {
+      sb.append("Observaciones: ").append(observaciones.trim()).append("\n");
     }
 
     if (notBlank(descripcionLegacy)) {
@@ -439,83 +446,5 @@ public class TicketsService {
   private String safeName(String n) {
     if (n == null || n.isBlank()) return "imagen.jpg";
     return n.replaceAll("[^a-zA-Z0-9._-]", "_");
-  }
-
-  // =========================
-  // Compat helpers
-  // =========================
-
-  private String readEquipo(TicketCrearRequest req) {
-    try { return req.equipo(); } catch (Throwable e) { return null; }
-  }
-
-  private String readDescripcionFalla(TicketCrearRequest req) {
-    try { return req.descripcionFalla(); } catch (Throwable e) { return null; }
-  }
-
-  private String readTipoServicioSugerido(TicketCrearRequest req) {
-    try { return req.tipoServicioSugerido(); } catch (Throwable e) { return null; }
-  }
-
-  private String readDireccion(TicketCrearRequest req) {
-    try { return req.direccion(); } catch (Throwable e) { return null; }
-  }
-
-  private void safeSetEquipo(TicketSolicitud t, String v) {
-    try { t.getClass().getMethod("setEquipo", String.class).invoke(t, v); } catch (Throwable ignored) {}
-  }
-
-  private void safeSetDescripcionFalla(TicketSolicitud t, String v) {
-    try { t.getClass().getMethod("setDescripcionFalla", String.class).invoke(t, v); } catch (Throwable ignored) {}
-  }
-
-  private void safeSetTipoServicioSugerido(TicketSolicitud t, String v) {
-    try { t.getClass().getMethod("setTipoServicioSugerido", String.class).invoke(t, v); } catch (Throwable ignored) {}
-  }
-
-  private void safeSetDireccion(TicketSolicitud t, String v) {
-    try { t.getClass().getMethod("setDireccion", String.class).invoke(t, v); } catch (Throwable ignored) {}
-  }
-
-  private void safeSetClienteSnapshot(TicketSolicitud t, Cliente c) {
-    try { t.getClass().getMethod("setClienteNombreSnapshot", String.class).invoke(t, c.getNombre()); } catch (Throwable ignored) {}
-    try { t.getClass().getMethod("setClienteTelefonoSnapshot", String.class).invoke(t, c.getTelefono()); } catch (Throwable ignored) {}
-    try { t.getClass().getMethod("setClienteEmailSnapshot", String.class).invoke(t, c.getEmail()); } catch (Throwable ignored) {}
-  }
-
-  private String readClienteNombreSnapshot(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getClienteNombreSnapshot").invoke(t); } catch (Throwable e) { return null; }
-  }
-
-  private String readClienteTelefonoSnapshot(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getClienteTelefonoSnapshot").invoke(t); } catch (Throwable e) { return null; }
-  }
-
-  private String readClienteEmailSnapshot(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getClienteEmailSnapshot").invoke(t); } catch (Throwable e) { return null; }
-  }
-
-  private UUID readOrdenTrabajoId(TicketSolicitud t) {
-    try { return (UUID) t.getClass().getMethod("getOrdenTrabajoId").invoke(t); } catch (Throwable e) { return null; }
-  }
-
-  private void safeSetOrdenTrabajoId(TicketSolicitud t, UUID id) {
-    try { t.getClass().getMethod("setOrdenTrabajoId", UUID.class).invoke(t, id); } catch (Throwable ignored) {}
-  }
-
-  private String readEquipoField(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getEquipo").invoke(t); } catch (Throwable e) { return null; }
-  }
-
-  private String readDescripcionFallaField(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getDescripcionFalla").invoke(t); } catch (Throwable e) { return null; }
-  }
-
-  private String readTipoServicioSugeridoField(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getTipoServicioSugerido").invoke(t); } catch (Throwable e) { return null; }
-  }
-
-  private String readDireccionField(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getDireccion").invoke(t); } catch (Throwable e) { return null; }
   }
 }

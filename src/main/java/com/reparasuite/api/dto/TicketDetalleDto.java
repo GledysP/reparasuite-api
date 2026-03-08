@@ -24,6 +24,7 @@ public record TicketDetalleDto(
     String descripcionFalla,
     String tipoServicioSugerido,
     String direccion,
+    String observaciones,
 
     // ✅ fotos
     List<TicketFotoDto> fotos

@@ -28,12 +28,12 @@ public class OrdenesTrabajoService {
   private final NotaOtRepo notaRepo;
   private final FotoOtRepo fotoRepo;
   private final TallerRepo tallerRepo;
-
   private final HistorialOtRepo historialRepo;
   private final PresupuestoOtRepo presupuestoRepo;
   private final PagoOtRepo pagoRepo;
   private final CitaOtRepo citaRepo;
   private final MensajeOtRepo mensajeRepo;
+  private final TicketSolicitudRepo ticketRepo;
 
   @Value("${reparasuite.upload-dir}")
   private String uploadDir;
@@ -49,7 +49,8 @@ public class OrdenesTrabajoService {
       PresupuestoOtRepo presupuestoRepo,
       PagoOtRepo pagoRepo,
       CitaOtRepo citaRepo,
-      MensajeOtRepo mensajeRepo
+      MensajeOtRepo mensajeRepo,
+      TicketSolicitudRepo ticketRepo
   ) {
     this.otRepo = otRepo;
     this.clienteRepo = clienteRepo;
@@ -62,14 +63,13 @@ public class OrdenesTrabajoService {
     this.pagoRepo = pagoRepo;
     this.citaRepo = citaRepo;
     this.mensajeRepo = mensajeRepo;
+    this.ticketRepo = ticketRepo;
   }
 
-  // ✅ Compatibilidad (firma antigua)
   public ApiListaResponse<OtListaItemDto> listar(String query, int page, int size) {
     return listar(query, null, null, null, null, page, size);
   }
 
-  // ✅ NUEVO: listado con filtros reales
   public ApiListaResponse<OtListaItemDto> listar(
       String query,
       String estado,
@@ -161,7 +161,7 @@ public class OrdenesTrabajoService {
         cli.getNombre(),
         cli.getTelefono(),
         cli.getEmail(),
-        0L,   // detalle OT no necesita agregados; se dejan compatibles
+        0L,
         null
     );
 
@@ -208,7 +208,6 @@ public class OrdenesTrabajoService {
     if (req.cliente().id() != null && !req.cliente().id().isBlank()) {
       cliente = clienteRepo.findById(UUID.fromString(req.cliente().id())).orElseThrow();
 
-      // ✅ opcional útil: sincroniza datos básicos si vienen en el request
       if (req.cliente().nombre() != null && !req.cliente().nombre().isBlank()) {
         cliente.setNombre(req.cliente().nombre().trim());
       }
@@ -219,7 +218,6 @@ public class OrdenesTrabajoService {
       cliente = clienteRepo.save(cliente);
 
     } else {
-      // ✅ evitar duplicado por email
       String emailNorm = normalizarEmail(req.cliente().email());
       if (emailNorm != null) {
         cliente = clienteRepo.findByEmailIgnoreCase(emailNorm).orElse(null);
@@ -254,7 +252,6 @@ public class OrdenesTrabajoService {
     ot.setTecnico(tecnico);
     ot.setTipo(tipo);
     ot.setPrioridad(prioridad);
-
     ot.setEquipo(limpiarNullable(req.equipo()));
     ot.setDescripcion(req.descripcion());
     ot.setEstado(EstadoOt.RECIBIDA);
@@ -273,6 +270,35 @@ public class OrdenesTrabajoService {
     registrarEvento(ot, EventoHistorialOt.OT_CREADA, desc);
 
     return new CrearResponse(ot.getId());
+  }
+
+  @Transactional
+  public void eliminar(String idOrCodigo) {
+    if (ctx().rolCliente()) throw new SecurityException("No autorizado");
+
+    OrdenTrabajo ot = resolverOt(idOrCodigo);
+    UUID otId = ot.getId();
+
+    // desvincular tickets asociados
+    List<TicketSolicitud> tickets = ticketRepo.findByOrdenTrabajoId(otId);
+    for (TicketSolicitud t : tickets) {
+      t.setOrdenTrabajoId(null);
+      if (t.getEstado() == EstadoTicket.EN_REVISION) {
+        t.setEstado(EstadoTicket.ABIERTO);
+      }
+      ticketRepo.save(t);
+    }
+
+    // borrar dependencias hijas
+    mensajeRepo.deleteByOt_Id(otId);
+    citaRepo.deleteByOt_Id(otId);
+    notaRepo.deleteByOt_Id(otId);
+    fotoRepo.deleteByOt_Id(otId);
+    historialRepo.deleteByOt_Id(otId);
+    presupuestoRepo.deleteByOt_Id(otId);
+    pagoRepo.deleteByOt_Id(otId);
+
+    otRepo.delete(ot);
   }
 
   @Transactional
@@ -604,12 +630,12 @@ public class OrdenesTrabajoService {
     try { tipo = TipoOt.valueOf(readTipoServicioTicket(ticket, "DOMICILIO")); } catch (Exception e) { tipo = TipoOt.DOMICILIO; }
     try { prioridad = PrioridadOt.valueOf("MEDIA"); } catch (Exception e) { prioridad = PrioridadOt.values()[0]; }
 
-    String equipo = limpiarNullable(readEquipoTicket(ticket));
+    String equipo = limpiarNullable(ticket.getEquipo());
     if (equipo == null) {
       equipo = limpiarNullable(ticket.getAsunto());
     }
 
-    String falla = limpiarNullable(readDescripcionFallaTicket(ticket));
+    String falla = limpiarNullable(ticket.getDescripcionFalla());
     String descripcionLimpia = (falla != null && !falla.isBlank())
         ? falla
         : limpiarDescripcionDesdeTicket(ticket.getDescripcion());
@@ -620,12 +646,11 @@ public class OrdenesTrabajoService {
     ot.setTecnico(null);
     ot.setTipo(tipo);
     ot.setPrioridad(prioridad);
-
     ot.setEquipo(equipo);
     ot.setDescripcion(descripcionLimpia);
     ot.setEstado(EstadoOt.RECIBIDA);
 
-    String direccion = limpiarNullable(readDireccionTicket(ticket));
+    String direccion = limpiarNullable(ticket.getDireccion());
     if (tipo == TipoOt.DOMICILIO && direccion != null) {
       ot.setDireccion(direccion);
     }
@@ -671,7 +696,6 @@ public class OrdenesTrabajoService {
       UUID id = UUID.fromString(idOrCodigo);
       return otRepo.findById(id).orElseThrow();
     } catch (IllegalArgumentException ex) {
-      // ✅ ahora ignora mayúsculas/minúsculas
       return otRepo.findByCodigoIgnoreCase(idOrCodigo.trim()).orElseThrow();
     }
   }
@@ -719,25 +743,9 @@ public class OrdenesTrabajoService {
     return t.isBlank() ? null : t;
   }
 
-  private String readEquipoTicket(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getEquipo").invoke(t); } catch (Throwable e) { return null; }
-  }
-
-  private String readDescripcionFallaTicket(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getDescripcionFalla").invoke(t); } catch (Throwable e) { return null; }
-  }
-
-  private String readDireccionTicket(TicketSolicitud t) {
-    try { return (String) t.getClass().getMethod("getDireccion").invoke(t); } catch (Throwable e) { return null; }
-  }
-
   private String readTipoServicioTicket(TicketSolicitud t, String fallback) {
-    try {
-      String v = (String) t.getClass().getMethod("getTipoServicioSugerido").invoke(t);
-      return (v == null || v.isBlank()) ? fallback : v;
-    } catch (Throwable e) {
-      return fallback;
-    }
+    String v = t.getTipoServicioSugerido();
+    return (v == null || v.isBlank()) ? fallback : v;
   }
 
   private String limpiarDescripcionDesdeTicket(String descripcionTicket) {
@@ -755,6 +763,7 @@ public class OrdenesTrabajoService {
       if (low.startsWith("equipo / asunto:")) continue;
       if (low.startsWith("tipo sugerido:")) continue;
       if (low.startsWith("dirección / ubicación:")) continue;
+      if (low.startsWith("observaciones:")) continue;
       if (low.startsWith("nota:")) continue;
 
       if (sb.length() > 0) sb.append("\n");
@@ -765,7 +774,6 @@ public class OrdenesTrabajoService {
     return out.isBlank() ? "Solicitud creada desde ticket" : out;
   }
 
-  // ✅ Helpers de parseo robusto (evita fallos por minúsculas)
   private <E extends Enum<E>> E parseEnumNullable(Class<E> enumType, String raw, String fieldName) {
     if (raw == null || raw.isBlank()) return null;
     try {

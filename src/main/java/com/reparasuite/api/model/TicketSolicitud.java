@@ -53,6 +53,9 @@ public class TicketSolicitud {
 
   @Column(name = "direccion", length = 500)
   private String direccion;
+  
+  @Column(name = "observaciones", length = 4000)
+  private String observaciones;
 
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
@@ -87,6 +90,7 @@ public class TicketSolicitud {
   public String getDescripcionFalla() { return descripcionFalla; }
   public String getTipoServicioSugerido() { return tipoServicioSugerido; }
   public String getDireccion() { return direccion; }
+  public String getObservaciones() { return observaciones; }
   public OffsetDateTime getCreatedAt() { return createdAt; }
   public OffsetDateTime getUpdatedAt() { return updatedAt; }
 
@@ -105,6 +109,7 @@ public class TicketSolicitud {
   public void setDescripcionFalla(String descripcionFalla) { this.descripcionFalla = descripcionFalla; }
   public void setTipoServicioSugerido(String tipoServicioSugerido) { this.tipoServicioSugerido = tipoServicioSugerido; }
   public void setDireccion(String direccion) { this.direccion = direccion; }
+  public void setObservaciones(String observaciones) { this.observaciones = observaciones; }
 
   public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
   public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }
