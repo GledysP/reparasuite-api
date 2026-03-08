@@ -30,6 +30,9 @@ public class TicketsService {
   private final ClienteRepo clienteRepo;
   private final OrdenesTrabajoService ordenesTrabajoService;
 
+  // ✅ NUEVO: para devolver código OT cuando el ticket ya estaba vinculado
+  private final OrdenTrabajoRepo otRepo;
+
   @Value("${reparasuite.upload-dir}")
   private String uploadDir;
 
@@ -38,13 +41,15 @@ public class TicketsService {
       TicketMensajeRepo msgRepo,
       TicketFotoRepo fotoRepo,
       ClienteRepo clienteRepo,
-      OrdenesTrabajoService ordenesTrabajoService
+      OrdenesTrabajoService ordenesTrabajoService,
+      OrdenTrabajoRepo otRepo
   ) {
     this.ticketRepo = ticketRepo;
     this.msgRepo = msgRepo;
     this.fotoRepo = fotoRepo;
     this.clienteRepo = clienteRepo;
     this.ordenesTrabajoService = ordenesTrabajoService;
+    this.otRepo = otRepo;
   }
 
   // =========================
@@ -83,42 +88,32 @@ public class TicketsService {
     t.setCliente(c);
     t.setEstado(EstadoTicket.ABIERTO);
 
-    // ✅ "asunto" se usa como EQUIPO (sin redundancia en UI)
     String equipoAsunto = limpio(req.asunto());
-
-    // Compatibilidad legacy
     String descripcionLegacy = limpio(req.descripcion());
 
-    // Campos estructurados (si existen en tu record)
-    String equipo = limpioNullable(readEquipo(req)); // si no existe campo equipo, cae a null
+    String equipo = limpioNullable(readEquipo(req));
     String falla = limpioNullable(readDescripcionFalla(req));
     String tipoSug = normalizarTipoServicio(readTipoServicioSugerido(req));
     String direccion = limpioNullable(readDireccion(req));
 
-    // ✅ si no viene equipo explícito, usar asunto como equipo
     if (!notBlank(equipo) && notBlank(equipoAsunto)) {
       equipo = equipoAsunto;
     }
 
-    // Campo principal visible en listas/backoffice (compatibilidad actual)
     t.setAsunto(equipoAsunto);
 
-    // Estructurados (si tu entidad TicketSolicitud ya los tiene)
     safeSetEquipo(t, equipo);
     safeSetDescripcionFalla(t, falla);
     safeSetTipoServicioSugerido(t, tipoSug);
     safeSetDireccion(t, direccion);
 
-    // snapshot del cliente
     safeSetClienteSnapshot(t, c);
 
-    // descripcion legacy para compatibilidad, pero limpia (sin redundancia)
     String descripcionFinal = construirDescripcionTicket(descripcionLegacy, equipo, falla, tipoSug, direccion);
     t.setDescripcion(descripcionFinal);
 
     t = ticketRepo.save(t);
 
-    // ✅ mensaje inicial más corto (recomendado)
     TicketMensaje m = new TicketMensaje();
     m.setTicket(t);
     m.setRemitenteTipo(TipoRemitente.CLIENTE);
@@ -147,7 +142,7 @@ public class TicketsService {
     m.setContenido(req.contenido());
     msgRepo.save(m);
 
-    t.setEstado(t.getEstado()); // touch updatedAt
+    t.setEstado(t.getEstado());
     ticketRepo.save(t);
   }
 
@@ -181,7 +176,8 @@ public class TicketsService {
             t.getUpdatedAt(),
             t.getCliente().getId(),
             coalesce(readClienteNombreSnapshot(t), t.getCliente().getNombre()),
-            coalesce(readClienteEmailSnapshot(t), t.getCliente().getEmail())
+            coalesce(readClienteEmailSnapshot(t), t.getCliente().getEmail()),
+            readOrdenTrabajoId(t) // ✅ NUEVO
         ))
         .toList();
 
@@ -207,7 +203,7 @@ public class TicketsService {
     m.setContenido(req.contenido());
     msgRepo.save(m);
 
-    t.setEstado(t.getEstado()); // touch updatedAt
+    t.setEstado(t.getEstado());
     ticketRepo.save(t);
   }
 
@@ -225,14 +221,24 @@ public class TicketsService {
 
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
 
-    // ✅ idempotente: si ya está ligada, devuelve la misma
-    if (readOrdenTrabajoId(t) != null) {
-      return new TicketCrearOtResponse(t.getId(), readOrdenTrabajoId(t), null);
+    // ✅ idempotente: si ya está ligada, devuelve la misma (ahora con código si existe)
+    UUID otExistenteId = readOrdenTrabajoId(t);
+    if (otExistenteId != null) {
+      String codigoExistente = otRepo.findById(otExistenteId)
+          .map(OrdenTrabajo::getCodigo)
+          .orElse(null);
+
+      return new TicketCrearOtResponse(t.getId(), otExistenteId, codigoExistente);
     }
 
     var creada = ordenesTrabajoService.crearDesdeTicket(t);
 
     safeSetOrdenTrabajoId(t, creada.id());
+
+    // ✅ cambia estado del ticket para que no quede “pendiente” lógicamente
+    if (t.getEstado() == EstadoTicket.ABIERTO) {
+      t.setEstado(EstadoTicket.EN_REVISION);
+    }
     ticketRepo.save(t);
 
     TicketMensaje m = new TicketMensaje();
@@ -241,11 +247,6 @@ public class TicketsService {
     m.setRemitenteNombre(nombreActorBackoffice());
     m.setContenido("Se creó una OT desde este ticket: " + creada.codigo());
     msgRepo.save(m);
-
-    if (t.getEstado() == EstadoTicket.ABIERTO) {
-      t.setEstado(EstadoTicket.EN_REVISION);
-      ticketRepo.save(t);
-    }
 
     return new TicketCrearOtResponse(t.getId(), creada.id(), creada.codigo());
   }
@@ -277,7 +278,7 @@ public class TicketsService {
     return new TicketDetalleDto(
         t.getId(),
         t.getEstado().name(),
-        t.getAsunto(),             // ✅ asunto = equipo (UI simple)
+        t.getAsunto(),
         t.getDescripcion(),
         mensajes,
         t.getCreatedAt(),
@@ -288,10 +289,10 @@ public class TicketsService {
         readClienteTelefonoSnapshot(t),
         readClienteEmailSnapshot(t),
 
-        readEquipoField(t),                 // equipo
-        readDescripcionFallaField(t),       // descripcionFalla
-        readTipoServicioSugeridoField(t),   // tipoServicioSugerido
-        readDireccionField(t),              // direccion
+        readEquipoField(t),
+        readDescripcionFallaField(t),
+        readTipoServicioSugeridoField(t),
+        readDireccionField(t),
 
         fotos
     );
@@ -328,7 +329,7 @@ public class TicketsService {
     foto.setNombreOriginal(file.getOriginalFilename());
     foto = fotoRepo.save(foto);
 
-    ticket.setEstado(ticket.getEstado()); // touch updatedAt
+    ticket.setEstado(ticket.getEstado());
     ticketRepo.save(ticket);
 
     return new TicketFotoDto(foto.getId(), foto.getUrl(), foto.getNombreOriginal(), foto.getCreatedAt());
@@ -381,7 +382,6 @@ public class TicketsService {
       String tipoServicioSugerido,
       String direccion
   ) {
-    // ✅ Sin redundancia: NO repetir equipo si asunto ya lo representa
     boolean hayEstructurado = notBlank(falla) || notBlank(tipoServicioSugerido) || notBlank(direccion);
 
     if (!hayEstructurado) {
@@ -442,7 +442,7 @@ public class TicketsService {
   }
 
   // =========================
-  // Compat helpers (para no romper si tu entidad aún no tiene todos los campos)
+  // Compat helpers
   // =========================
 
   private String readEquipo(TicketCrearRequest req) {

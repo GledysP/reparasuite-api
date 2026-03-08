@@ -10,5 +10,8 @@ public record TicketBackofficeListaItemDto(
     OffsetDateTime updatedAt,
     UUID clienteId,
     String clienteNombre,
-    String clienteEmail
+    String clienteEmail,
+
+    // ✅ NUEVO: permite al front saber si ya existe OT vinculada
+    UUID ordenTrabajoId
 ) {}

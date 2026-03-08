@@ -21,14 +21,18 @@ public class OrdenesTrabajoController {
     this.service = service;
   }
 
-  // Backoffice list
+  // Backoffice list (✅ con filtros)
   @GetMapping
   public ApiListaResponse<OtListaItemDto> listar(
       @RequestParam(defaultValue = "") String query,
+      @RequestParam(required = false) String estado,
+      @RequestParam(required = false) String tipo,
+      @RequestParam(required = false) String prioridad,
+      @RequestParam(required = false) String tecnicoId,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size
   ) {
-    return service.listar(query, page, size);
+    return service.listar(query, estado, tipo, prioridad, tecnicoId, page, size);
   }
 
   // Shared detail (cliente verá filtrado)

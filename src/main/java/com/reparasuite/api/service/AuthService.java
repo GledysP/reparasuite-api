@@ -56,6 +56,7 @@ public class AuthService {
         .issuedAt(Date.from(now))
         .expiration(Date.from(exp))
         .claim("usuario", u.getUsuario())
+        .claim("nombre", u.getNombre()) // ✅ recomendado
         .claim("rol", u.getRol().name())
         .signWith(key, Jwts.SIG.HS256)
         .compact();
@@ -68,7 +69,7 @@ public class AuthService {
         u.getId(),
         u.getNombre(),
         u.getUsuario(),
-        u.getEmail(),        // ✅ email real
+        u.getEmail(),
         u.getRol().name(),
         u.isActivo()
     );

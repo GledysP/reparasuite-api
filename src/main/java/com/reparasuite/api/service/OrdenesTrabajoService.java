@@ -64,17 +64,35 @@ public class OrdenesTrabajoService {
     this.mensajeRepo = mensajeRepo;
   }
 
+  // ✅ Compatibilidad (firma antigua)
   public ApiListaResponse<OtListaItemDto> listar(String query, int page, int size) {
+    return listar(query, null, null, null, null, page, size);
+  }
+
+  // ✅ NUEVO: listado con filtros reales
+  public ApiListaResponse<OtListaItemDto> listar(
+      String query,
+      String estado,
+      String tipo,
+      String prioridad,
+      String tecnicoId,
+      int page,
+      int size
+  ) {
     if (ctx().rolCliente()) throw new SecurityException("No autorizado");
 
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
-    Page<OrdenTrabajo> p;
+    int pageSafe = Math.max(page, 0);
+    int sizeSafe = Math.max(size, 1);
 
-    if (query == null || query.isBlank()) {
-      p = otRepo.findAll(pageable);
-    } else {
-      p = otRepo.findByCodigoContainingIgnoreCaseOrCliente_NombreContainingIgnoreCase(query, query, pageable);
-    }
+    Pageable pageable = PageRequest.of(pageSafe, sizeSafe, Sort.by(Sort.Direction.DESC, "updatedAt"));
+
+    String q = limpiarNullable(query);
+    EstadoOt estadoEnum = parseEnumNullable(EstadoOt.class, estado, "estado");
+    TipoOt tipoEnum = parseEnumNullable(TipoOt.class, tipo, "tipo");
+    PrioridadOt prioridadEnum = parseEnumNullable(PrioridadOt.class, prioridad, "prioridad");
+    UUID tecnicoUuid = parseUuidNullable(tecnicoId, "tecnicoId");
+
+    Page<OrdenTrabajo> p = otRepo.buscarBackoffice(q, estadoEnum, tipoEnum, prioridadEnum, tecnicoUuid, pageable);
 
     return new ApiListaResponse<>(
         p.getContent().stream().map(this::toListaItem).toList(),
@@ -138,7 +156,14 @@ public class OrdenesTrabajoService {
         .toList();
 
     Cliente cli = ot.getCliente();
-    ClienteResumenDto clienteDto = new ClienteResumenDto(cli.getId(), cli.getNombre(), cli.getTelefono(), cli.getEmail());
+    ClienteResumenDto clienteDto = new ClienteResumenDto(
+        cli.getId(),
+        cli.getNombre(),
+        cli.getTelefono(),
+        cli.getEmail(),
+        0L,   // detalle OT no necesita agregados; se dejan compatibles
+        null
+    );
 
     Usuario tec = ot.getTecnico();
     UsuarioResumenDto tecnicoDto = null;
@@ -154,7 +179,7 @@ public class OrdenesTrabajoService {
         ot.getEstado().name(),
         ot.getTipo().name(),
         ot.getPrioridad().name(),
-        ot.getEquipo(), // ✅ NUEVO
+        ot.getEquipo(),
         ot.getDescripcion(),
         clienteDto,
         tecnicoDto,
@@ -182,6 +207,17 @@ public class OrdenesTrabajoService {
     Cliente cliente;
     if (req.cliente().id() != null && !req.cliente().id().isBlank()) {
       cliente = clienteRepo.findById(UUID.fromString(req.cliente().id())).orElseThrow();
+
+      // ✅ opcional útil: sincroniza datos básicos si vienen en el request
+      if (req.cliente().nombre() != null && !req.cliente().nombre().isBlank()) {
+        cliente.setNombre(req.cliente().nombre().trim());
+      }
+      if (req.cliente().telefono() != null) {
+        cliente.setTelefono(limpiarNullable(req.cliente().telefono()));
+      }
+      cliente.setEmail(normalizarEmail(req.cliente().email()));
+      cliente = clienteRepo.save(cliente);
+
     } else {
       // ✅ evitar duplicado por email
       String emailNorm = normalizarEmail(req.cliente().email());
@@ -209,8 +245,8 @@ public class OrdenesTrabajoService {
     Taller t = tallerRepo.findById(1L).orElseThrow();
     String codigo = generarCodigo(t.getPrefijoOt());
 
-    TipoOt tipo = TipoOt.valueOf(req.tipo());
-    PrioridadOt prioridad = PrioridadOt.valueOf(req.prioridad());
+    TipoOt tipo = parseEnumRequired(TipoOt.class, req.tipo(), "tipo");
+    PrioridadOt prioridad = parseEnumRequired(PrioridadOt.class, req.prioridad(), "prioridad");
 
     OrdenTrabajo ot = new OrdenTrabajo();
     ot.setCodigo(codigo);
@@ -219,9 +255,7 @@ public class OrdenesTrabajoService {
     ot.setTipo(tipo);
     ot.setPrioridad(prioridad);
 
-    // ✅ NUEVO: equipo
     ot.setEquipo(limpiarNullable(req.equipo()));
-
     ot.setDescripcion(req.descripcion());
     ot.setEstado(EstadoOt.RECIBIDA);
 
@@ -246,7 +280,7 @@ public class OrdenesTrabajoService {
     if (ctx().rolCliente()) throw new SecurityException("No autorizado");
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    EstadoOt nuevo = EstadoOt.valueOf(estado);
+    EstadoOt nuevo = parseEnumRequired(EstadoOt.class, estado, "estado");
 
     ot.setEstado(nuevo);
     otRepo.save(ot);
@@ -572,7 +606,7 @@ public class OrdenesTrabajoService {
 
     String equipo = limpiarNullable(readEquipoTicket(ticket));
     if (equipo == null) {
-      equipo = limpiarNullable(ticket.getAsunto()); // ✅ fallback: asunto = equipo
+      equipo = limpiarNullable(ticket.getAsunto());
     }
 
     String falla = limpiarNullable(readDescripcionFallaTicket(ticket));
@@ -587,9 +621,7 @@ public class OrdenesTrabajoService {
     ot.setTipo(tipo);
     ot.setPrioridad(prioridad);
 
-    // ✅ NUEVO
     ot.setEquipo(equipo);
-
     ot.setDescripcion(descripcionLimpia);
     ot.setEstado(EstadoOt.RECIBIDA);
 
@@ -639,7 +671,8 @@ public class OrdenesTrabajoService {
       UUID id = UUID.fromString(idOrCodigo);
       return otRepo.findById(id).orElseThrow();
     } catch (IllegalArgumentException ex) {
-      return otRepo.findByCodigo(idOrCodigo).orElseThrow();
+      // ✅ ahora ignora mayúsculas/minúsculas
+      return otRepo.findByCodigoIgnoreCase(idOrCodigo.trim()).orElseThrow();
     }
   }
 
@@ -667,7 +700,7 @@ public class OrdenesTrabajoService {
         ot.getEstado().name(),
         ot.getTipo().name(),
         ot.getPrioridad().name(),
-        ot.getEquipo(), // ✅ NUEVO
+        ot.getEquipo(),
         ot.getCliente().getNombre(),
         ot.getTecnico() != null ? ot.getTecnico().getNombre() : null,
         ot.getUpdatedAt()
@@ -718,7 +751,6 @@ public class OrdenesTrabajoService {
       if (l.isBlank()) continue;
 
       String low = l.toLowerCase();
-      // Filtrar líneas de metadatos típicas para dejar una descripción más limpia
       if (low.startsWith("equipo:")) continue;
       if (low.startsWith("equipo / asunto:")) continue;
       if (low.startsWith("tipo sugerido:")) continue;
@@ -731,6 +763,33 @@ public class OrdenesTrabajoService {
 
     String out = sb.toString().trim();
     return out.isBlank() ? "Solicitud creada desde ticket" : out;
+  }
+
+  // ✅ Helpers de parseo robusto (evita fallos por minúsculas)
+  private <E extends Enum<E>> E parseEnumNullable(Class<E> enumType, String raw, String fieldName) {
+    if (raw == null || raw.isBlank()) return null;
+    try {
+      return Enum.valueOf(enumType, raw.trim().toUpperCase());
+    } catch (IllegalArgumentException ex) {
+      throw new IllegalArgumentException("Valor inválido para " + fieldName + ": " + raw);
+    }
+  }
+
+  private <E extends Enum<E>> E parseEnumRequired(Class<E> enumType, String raw, String fieldName) {
+    E value = parseEnumNullable(enumType, raw, fieldName);
+    if (value == null) {
+      throw new IllegalArgumentException("Falta valor para " + fieldName);
+    }
+    return value;
+  }
+
+  private UUID parseUuidNullable(String raw, String fieldName) {
+    if (raw == null || raw.isBlank()) return null;
+    try {
+      return UUID.fromString(raw.trim());
+    } catch (IllegalArgumentException ex) {
+      throw new IllegalArgumentException("UUID inválido para " + fieldName + ": " + raw);
+    }
   }
 
   private Ctx ctx() { return Ctx.fromSecurityContext(); }

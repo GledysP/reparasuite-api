@@ -29,7 +29,8 @@ public class ClientesService {
     if (query == null || query.isBlank()) {
       p = clienteRepo.findAll(pageable);
     } else {
-      p = clienteRepo.findByNombreContainingIgnoreCase(query, pageable);
+      // ✅ ahora busca también por teléfono y email
+      p = clienteRepo.buscarPorNombreTelefonoEmail(query.trim(), pageable);
     }
 
     return new ApiListaResponse<>(
@@ -49,13 +50,28 @@ public class ClientesService {
 
     return new ApiListaResponse<>(
         p.getContent().stream()
-            .map(ot -> new ClienteOtItemDto(ot.getCodigo(), ot.getEstado().name(), ot.getTipo().name(), ot.getUpdatedAt()))
+            .map(ot -> new ClienteOtItemDto(
+                ot.getCodigo(),
+                ot.getEstado().name(),
+                ot.getTipo().name(),
+                ot.getUpdatedAt()
+            ))
             .toList(),
         p.getTotalElements()
     );
   }
 
   private ClienteResumenDto toResumen(Cliente c) {
-    return new ClienteResumenDto(c.getId(), c.getNombre(), c.getTelefono(), c.getEmail());
+    long totalWos = otRepo.countByCliente_Id(c.getId());
+    var lastOt = otRepo.findTopByCliente_IdOrderByUpdatedAtDesc(c.getId()).orElse(null);
+
+    return new ClienteResumenDto(
+        c.getId(),
+        c.getNombre(),
+        c.getTelefono(),
+        c.getEmail(),
+        totalWos,
+        lastOt != null ? lastOt.getUpdatedAt() : null
+    );
   }
 }

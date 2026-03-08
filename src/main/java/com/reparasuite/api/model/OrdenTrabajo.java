@@ -13,7 +13,7 @@ public class OrdenTrabajo {
   @Column(columnDefinition = "uuid")
   private UUID id;
 
-  @Column(nullable = false, unique = true)
+  @Column(nullable = false, unique = true, columnDefinition = "TEXT") // Forzamos TEXT
   private String codigo;
 
   @Enumerated(EnumType.STRING)
@@ -29,10 +29,10 @@ public class OrdenTrabajo {
   private PrioridadOt prioridad;
 
   // ✅ NUEVO: equipo (simple, visible en listas y detalle)
-  @Column(length = 255)
+  @Column(length = 255, columnDefinition = "TEXT") // Forzamos TEXT
   private String equipo;
 
-  @Column(nullable = false, length = 4000)
+  @Column(nullable = false, length = 4000, columnDefinition = "TEXT") // Forzamos TEXT
   private String descripcion;
 
   @ManyToOne(optional = false)
