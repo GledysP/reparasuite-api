@@ -8,7 +8,21 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.reparasuite.api.dto.*;
+import com.reparasuite.api.dto.ApiListaResponse;
+import com.reparasuite.api.dto.CitaDto;
+import com.reparasuite.api.dto.CitaRequest;
+import com.reparasuite.api.dto.FotoDto;
+import com.reparasuite.api.dto.MensajeDto;
+import com.reparasuite.api.dto.MensajeEnviarRequest;
+import com.reparasuite.api.dto.OtCambiarEstadoRequest;
+import com.reparasuite.api.dto.OtCrearRequest;
+import com.reparasuite.api.dto.OtDetalleDto;
+import com.reparasuite.api.dto.OtListaItemDto;
+import com.reparasuite.api.dto.OtNotaRequest;
+import com.reparasuite.api.dto.PagoDto;
+import com.reparasuite.api.dto.PresupuestoAceptarRequest;
+import com.reparasuite.api.dto.PresupuestoDto;
+import com.reparasuite.api.dto.PresupuestoGuardarRequest;
 import com.reparasuite.api.service.OrdenesTrabajoService;
 
 @RestController
@@ -51,7 +65,10 @@ public class OrdenesTrabajoController {
   }
 
   @PatchMapping("/{id}/estado")
-  public ResponseEntity<?> cambiarEstado(@PathVariable String id, @Validated @RequestBody OtCambiarEstadoRequest req) {
+  public ResponseEntity<?> cambiarEstado(
+      @PathVariable String id,
+      @Validated @RequestBody OtCambiarEstadoRequest req
+  ) {
     service.cambiarEstado(id, req.estado());
     return ResponseEntity.noContent().build();
   }
@@ -76,7 +93,10 @@ public class OrdenesTrabajoController {
   }
 
   @PostMapping("/{id}/presupuesto")
-  public ResponseEntity<PresupuestoDto> guardarPresupuesto(@PathVariable String id, @Validated @RequestBody PresupuestoGuardarRequest req) {
+  public ResponseEntity<PresupuestoDto> guardarPresupuesto(
+      @PathVariable String id,
+      @Validated @RequestBody PresupuestoGuardarRequest req
+  ) {
     return ResponseEntity.ok(service.guardarPresupuesto(id, req));
   }
 
@@ -86,7 +106,10 @@ public class OrdenesTrabajoController {
   }
 
   @PostMapping("/{id}/presupuesto/aceptar")
-  public ResponseEntity<?> aceptarPresupuesto(@PathVariable String id, @Validated @RequestBody PresupuestoAceptarRequest req) {
+  public ResponseEntity<?> aceptarPresupuesto(
+      @PathVariable String id,
+      @Validated @RequestBody PresupuestoAceptarRequest req
+  ) {
     service.aceptarPresupuesto(id, req.acepto());
     return ResponseEntity.noContent().build();
   }
@@ -104,7 +127,10 @@ public class OrdenesTrabajoController {
   }
 
   @PostMapping("/{id}/pago/comprobante")
-  public ResponseEntity<PagoDto> subirComprobante(@PathVariable String id, @RequestParam("file") MultipartFile file) throws IOException {
+  public ResponseEntity<PagoDto> subirComprobante(
+      @PathVariable String id,
+      @RequestParam("file") MultipartFile file
+  ) throws IOException {
     return ResponseEntity.ok(service.subirComprobantePago(id, file));
   }
 
@@ -115,17 +141,26 @@ public class OrdenesTrabajoController {
   }
 
   @PostMapping("/{id}/citas")
-  public ResponseEntity<CitaDto> reservarCita(@PathVariable String id, @Validated @RequestBody CitaRequest req) {
+  public ResponseEntity<CitaDto> reservarCita(
+      @PathVariable String id,
+      @Validated @RequestBody CitaRequest req
+  ) {
     return ResponseEntity.ok(service.reservarCita(id, req));
   }
 
   @PutMapping("/citas/{citaId}")
-  public ResponseEntity<CitaDto> reprogramar(@PathVariable String citaId, @Validated @RequestBody CitaRequest req) {
+  public ResponseEntity<CitaDto> reprogramar(
+      @PathVariable String citaId,
+      @Validated @RequestBody CitaRequest req
+  ) {
     return ResponseEntity.ok(service.reprogramarCita(UUID.fromString(citaId), req));
   }
 
   @PostMapping("/{id}/mensajes")
-  public ResponseEntity<MensajeDto> enviarMensaje(@PathVariable String id, @Validated @RequestBody MensajeEnviarRequest req) {
+  public ResponseEntity<MensajeDto> enviarMensaje(
+      @PathVariable String id,
+      @Validated @RequestBody MensajeEnviarRequest req
+  ) {
     return ResponseEntity.ok(service.enviarMensaje(id, req.contenido()));
   }
 }

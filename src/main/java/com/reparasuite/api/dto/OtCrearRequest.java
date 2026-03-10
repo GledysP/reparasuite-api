@@ -11,6 +11,9 @@ public record OtCrearRequest(
 
     // ✅ NUEVO: equipo (opcional en MVP, pero recomendado)
     String equipo,
+    
+    // ✅ vínculo opcional con ticket origen
+    String ticketId,
 
     @NotBlank String descripcion,
 

@@ -2,11 +2,16 @@ package com.reparasuite.api.service;
 
 import java.util.UUID;
 
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.reparasuite.api.dto.*;
+import com.reparasuite.api.dto.ApiListaResponse;
+import com.reparasuite.api.dto.ClienteOtItemDto;
+import com.reparasuite.api.dto.ClienteResumenDto;
 import com.reparasuite.api.model.Cliente;
 import com.reparasuite.api.repo.ClienteRepo;
 import com.reparasuite.api.repo.OrdenTrabajoRepo;
@@ -38,9 +43,16 @@ public class ClientesService {
   }
 
   public ApiListaResponse<ClienteResumenDto> listar(String query, int page, int size) {
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "nombre"));
-    Page<Cliente> p;
+    int pageSafe = Math.max(page, 0);
+    int sizeSafe = Math.max(size, 1);
 
+    Pageable pageable = PageRequest.of(
+        pageSafe,
+        sizeSafe,
+        Sort.by(Sort.Direction.ASC, "nombre")
+    );
+
+    Page<Cliente> p;
     if (query == null || query.isBlank()) {
       p = clienteRepo.findAll(pageable);
     } else {
@@ -48,18 +60,28 @@ public class ClientesService {
     }
 
     return new ApiListaResponse<>(
-      p.getContent().stream().map(this::toResumen).toList(),
-      p.getTotalElements()
+        p.getContent().stream().map(this::toResumen).toList(),
+        p.getTotalElements()
     );
   }
 
   public ClienteResumenDto obtener(UUID id) {
-    Cliente c = clienteRepo.findById(id).orElseThrow();
+    Cliente c = clienteRepo.findById(id)
+        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+
     return toResumen(c);
   }
 
   public ApiListaResponse<ClienteOtItemDto> ordenesTrabajo(UUID clienteId, int page, int size) {
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
+    int pageSafe = Math.max(page, 0);
+    int sizeSafe = Math.max(size, 1);
+
+    Pageable pageable = PageRequest.of(
+        pageSafe,
+        sizeSafe,
+        Sort.by(Sort.Direction.DESC, "updatedAt")
+    );
+
     var p = otRepo.findByCliente_Id(clienteId, pageable);
 
     return new ApiListaResponse<>(
@@ -77,7 +99,8 @@ public class ClientesService {
 
   @Transactional
   public void eliminar(UUID clienteId) {
-    Cliente c = clienteRepo.findById(clienteId).orElseThrow();
+    Cliente c = clienteRepo.findById(clienteId)
+        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
 
     long totalOts = otRepo.countByCliente_Id(clienteId);
     if (totalOts > 0) {

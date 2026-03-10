@@ -5,7 +5,9 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import com.reparasuite.api.dto.*;
+import com.reparasuite.api.dto.ApiListaResponse;
+import com.reparasuite.api.dto.ClienteOtItemDto;
+import com.reparasuite.api.dto.ClienteResumenDto;
 import com.reparasuite.api.service.ClientesService;
 
 @RestController

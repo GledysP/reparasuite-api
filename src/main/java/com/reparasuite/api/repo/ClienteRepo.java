@@ -17,7 +17,6 @@ public interface ClienteRepo extends JpaRepository<Cliente, UUID> {
 
   Optional<Cliente> findByEmailIgnoreCase(String email);
 
-  // ✅ NUEVO: búsqueda amplia (nombre / teléfono / email)
   @Query("""
       select c
       from Cliente c
