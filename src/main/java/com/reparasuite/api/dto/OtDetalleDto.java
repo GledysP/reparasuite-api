@@ -11,8 +11,12 @@ public record OtDetalleDto(
     String tipo,
     String prioridad,
 
-    // ✅ NUEVO
     String equipo,
+
+    UUID equipoId,
+    UUID categoriaEquipoId,
+    String categoriaEquipoNombre,
+    String fallaReportada,
 
     String descripcion,
     ClienteResumenDto cliente,

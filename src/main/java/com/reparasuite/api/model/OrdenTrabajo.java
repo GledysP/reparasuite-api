@@ -13,7 +13,7 @@ public class OrdenTrabajo {
   @Column(columnDefinition = "uuid")
   private UUID id;
 
-  @Column(nullable = false, unique = true, columnDefinition = "TEXT") // Forzamos TEXT
+  @Column(nullable = false, unique = true, columnDefinition = "TEXT")
   private String codigo;
 
   @Enumerated(EnumType.STRING)
@@ -28,11 +28,21 @@ public class OrdenTrabajo {
   @Column(nullable = false)
   private PrioridadOt prioridad;
 
-  // ✅ NUEVO: equipo (simple, visible en listas y detalle)
-  @Column(length = 255, columnDefinition = "TEXT") // Forzamos TEXT
+  @Column(length = 255, columnDefinition = "TEXT")
   private String equipo;
+  
+  @ManyToOne
+  @JoinColumn(name = "equipo_id")
+  private Equipo equipoRegistrado;
 
-  @Column(nullable = false, length = 4000, columnDefinition = "TEXT") // Forzamos TEXT
+  @ManyToOne
+  @JoinColumn(name = "categoria_equipo_id")
+  private CategoriaEquipo categoriaEquipo;
+
+  @Column(name = "falla_reportada", length = 4000)
+  private String fallaReportada;
+
+  @Column(nullable = false, length = 4000, columnDefinition = "TEXT")
   private String descripcion;
 
   @ManyToOne(optional = false)
@@ -74,8 +84,11 @@ public class OrdenTrabajo {
   public EstadoOt getEstado() { return estado; }
   public TipoOt getTipo() { return tipo; }
   public PrioridadOt getPrioridad() { return prioridad; }
-  public String getEquipo() { return equipo; } // ✅
-  public String getDescripcion() { return descripcion; }
+  public String getEquipo() { return equipo; }
+  public Equipo getEquipoRegistrado() { return equipoRegistrado; }
+  public CategoriaEquipo getCategoriaEquipo() { return categoriaEquipo; }
+  public String getFallaReportada() { return fallaReportada; }
+  public String getDescripcion() { return descripcion; } 
   public Cliente getCliente() { return cliente; }
   public Usuario getTecnico() { return tecnico; }
   public OffsetDateTime getFechaPrevista() { return fechaPrevista; }
@@ -88,7 +101,10 @@ public class OrdenTrabajo {
   public void setEstado(EstadoOt estado) { this.estado = estado; }
   public void setTipo(TipoOt tipo) { this.tipo = tipo; }
   public void setPrioridad(PrioridadOt prioridad) { this.prioridad = prioridad; }
-  public void setEquipo(String equipo) { this.equipo = equipo; } // ✅
+  public void setEquipo(String equipo) { this.equipo = equipo; }
+  public void setEquipoRegistrado(Equipo equipoRegistrado) { this.equipoRegistrado = equipoRegistrado; }
+  public void setCategoriaEquipo(CategoriaEquipo categoriaEquipo) { this.categoriaEquipo = categoriaEquipo; }
+  public void setFallaReportada(String fallaReportada) { this.fallaReportada = fallaReportada; }
   public void setDescripcion(String descripcion) { this.descripcion = descripcion; }
   public void setCliente(Cliente cliente) { this.cliente = cliente; }
   public void setTecnico(Usuario tecnico) { this.tecnico = tecnico; }

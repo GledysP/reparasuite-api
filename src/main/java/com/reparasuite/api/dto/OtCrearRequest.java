@@ -6,19 +6,21 @@ import jakarta.validation.constraints.NotNull;
 public record OtCrearRequest(
     @NotNull ClienteCrearDto cliente,
 
-    @NotNull String tipo,        // "TIENDA" | "DOMICILIO"
-    @NotNull String prioridad,   // "BAJA" | "MEDIA" | "ALTA"
+    @NotNull String tipo,
+    @NotNull String prioridad,
 
-    // ✅ NUEVO: equipo (opcional en MVP, pero recomendado)
     String equipo,
-    
-    // ✅ vínculo opcional con ticket origen
+
+    String equipoId,
+    String categoriaEquipoId,
+    String fallaReportada,
+
     String ticketId,
 
     @NotBlank String descripcion,
 
-    String tecnicoId,            // UUID como string o null
-    String fechaPrevista,        // ISO-8601 o null
+    String tecnicoId,
+    String fechaPrevista,
     String direccion,
     String notasAcceso
 ) { }

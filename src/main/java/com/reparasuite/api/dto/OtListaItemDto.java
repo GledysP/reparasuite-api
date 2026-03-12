@@ -10,8 +10,12 @@ public record OtListaItemDto(
     String tipo,
     String prioridad,
 
-    // ✅ NUEVO
     String equipo,
+
+    UUID equipoId,
+    UUID categoriaEquipoId,
+    String categoriaEquipoNombre,
+    String fallaReportada,
 
     String clienteNombre,
     String tecnicoNombre,

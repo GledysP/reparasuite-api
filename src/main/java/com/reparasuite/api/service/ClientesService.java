@@ -86,12 +86,14 @@ public class ClientesService {
 
     return new ApiListaResponse<>(
         p.getContent().stream()
-            .map(ot -> new ClienteOtItemDto(
-                ot.getCodigo(),
-                ot.getEstado().name(),
-                ot.getTipo().name(),
-                ot.getUpdatedAt()
-            ))
+        .map(ot -> new ClienteOtItemDto(
+        	    ot.getId(),
+        	    ot.getCodigo(),
+        	    ot.getEstado().name(),
+        	    ot.getTipo().name(),
+        	    ot.getUpdatedAt(),
+        	    ot.getTecnico() != null ? ot.getTecnico().getNombre() : null
+        	))
             .toList(),
         p.getTotalElements()
     );
