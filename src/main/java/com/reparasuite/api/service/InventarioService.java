@@ -4,11 +4,22 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.reparasuite.api.dto.*;
+import com.reparasuite.api.dto.ApiListaResponse;
+import com.reparasuite.api.dto.InventarioCategoriaDto;
+import com.reparasuite.api.dto.InventarioItemCrearRequest;
+import com.reparasuite.api.dto.InventarioItemDetalleDto;
+import com.reparasuite.api.dto.InventarioItemResumenDto;
+import com.reparasuite.api.dto.InventarioMovimientoCrearRequest;
+import com.reparasuite.api.dto.InventarioMovimientoDto;
+import com.reparasuite.api.exception.ConflictException;
+import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.InventarioCategoria;
 import com.reparasuite.api.model.InventarioItem;
 import com.reparasuite.api.model.InventarioMovimiento;
@@ -36,8 +47,15 @@ public class InventarioService {
   }
 
   public ApiListaResponse<InventarioItemResumenDto> listar(Boolean activo, int page, int size) {
-    Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Direction.ASC, "nombre"));
-    Page<InventarioItem> p = activo == null ? itemRepo.findAll(pageable) : (activo ? itemRepo.findByActivoTrue(pageable) : itemRepo.findAll(pageable));
+    Pageable pageable = PageRequest.of(
+        Math.max(page, 0),
+        Math.max(size, 1),
+        Sort.by(Sort.Direction.ASC, "nombre")
+    );
+
+    Page<InventarioItem> p = activo == null
+        ? itemRepo.findAll(pageable)
+        : (activo ? itemRepo.findByActivoTrue(pageable) : itemRepo.findAll(pageable));
 
     return new ApiListaResponse<>(
         p.getContent().stream().map(this::toResumen).toList(),
@@ -47,14 +65,14 @@ public class InventarioService {
 
   public InventarioItemDetalleDto obtener(UUID id) {
     InventarioItem i = itemRepo.findById(id)
-        .orElseThrow(() -> new RuntimeException("Item no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Item no encontrado"));
     return toDetalle(i);
   }
 
   @Transactional
   public InventarioItemDetalleDto crear(InventarioItemCrearRequest req) {
     if (itemRepo.existsBySkuIgnoreCase(req.sku().trim())) {
-      throw new IllegalArgumentException("Ya existe un item con ese SKU");
+      throw new ConflictException("Ya existe un item con ese SKU");
     }
 
     InventarioItem i = new InventarioItem();
@@ -67,11 +85,11 @@ public class InventarioService {
   @Transactional
   public InventarioItemDetalleDto actualizar(UUID id, InventarioItemCrearRequest req) {
     InventarioItem i = itemRepo.findById(id)
-        .orElseThrow(() -> new RuntimeException("Item no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Item no encontrado"));
 
     String skuNuevo = req.sku().trim();
     if (!i.getSku().equalsIgnoreCase(skuNuevo) && itemRepo.existsBySkuIgnoreCase(skuNuevo)) {
-      throw new IllegalArgumentException("Ya existe un item con ese SKU");
+      throw new ConflictException("Ya existe un item con ese SKU");
     }
 
     BigDecimal stockActual = i.getStockActual();
@@ -96,7 +114,7 @@ public class InventarioService {
   @Transactional
   public InventarioMovimientoDto registrarMovimiento(UUID itemId, InventarioMovimientoCrearRequest req) {
     InventarioItem item = itemRepo.findById(itemId)
-        .orElseThrow(() -> new RuntimeException("Item no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Item no encontrado"));
 
     TipoMovimientoInventario tipo = TipoMovimientoInventario.valueOf(req.tipoMovimiento().trim().toUpperCase());
     BigDecimal cantidad = parseDecimal(req.cantidad(), "cantidad");
@@ -164,7 +182,7 @@ public class InventarioService {
   private InventarioCategoria resolveCategoria(String categoriaId) {
     if (categoriaId == null || categoriaId.isBlank()) return null;
     return categoriaRepo.findById(UUID.fromString(categoriaId.trim()))
-        .orElseThrow(() -> new RuntimeException("Categoría de inventario no encontrada"));
+        .orElseThrow(() -> new NotFoundException("Categoría de inventario no encontrada"));
   }
 
   private UnidadMedidaInventario resolveUnidad(String raw) {
@@ -203,7 +221,12 @@ public class InventarioService {
         i.getNombre(),
         i.getDescripcion(),
         i.getCategoria() != null
-            ? new InventarioCategoriaDto(i.getCategoria().getId(), i.getCategoria().getCodigo(), i.getCategoria().getNombre(), i.getCategoria().getDescripcion())
+            ? new InventarioCategoriaDto(
+                i.getCategoria().getId(),
+                i.getCategoria().getCodigo(),
+                i.getCategoria().getNombre(),
+                i.getCategoria().getDescripcion()
+            )
             : null,
         i.getMarca(),
         i.getModeloCompatibilidad(),

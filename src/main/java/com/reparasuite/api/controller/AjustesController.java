@@ -1,6 +1,7 @@
 package com.reparasuite.api.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -9,6 +10,7 @@ import com.reparasuite.api.service.AjustesService;
 
 @RestController
 @RequestMapping("/api/v1/ajustes")
+@PreAuthorize("hasRole('ADMIN')")
 public class AjustesController {
 
   private final AjustesService service;

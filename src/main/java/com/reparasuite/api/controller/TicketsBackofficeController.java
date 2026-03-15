@@ -3,6 +3,7 @@ package com.reparasuite.api.controller;
 import java.io.IOException;
 
 import org.springframework.http.MediaType;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -16,6 +17,7 @@ import jakarta.validation.constraints.Min;
 @RestController
 @RequestMapping("/api/v1/backoffice/tickets")
 @Validated
+@PreAuthorize("hasAnyRole('ADMIN','TECNICO')")
 public class TicketsBackofficeController {
 
   private final TicketsService ticketsService;
@@ -56,10 +58,6 @@ public class TicketsBackofficeController {
     return ticketsService.subirFotoBackoffice(id, file);
   }
 
-  /**
-   * Crea OT desde ticket y la vincula automáticamente.
-   * Idempotente: si el ticket ya tiene OT, devuelve la existente.
-   */
   @PostMapping("/{id}/crear-ot")
   public TicketCrearOtResponse crearOtDesdeTicket(@PathVariable String id) {
     return ticketsService.crearOtDesdeTicketBackoffice(id);

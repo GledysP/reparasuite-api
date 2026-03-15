@@ -18,6 +18,8 @@ import com.reparasuite.api.dto.CategoriaEquipoGuardarRequest;
 import com.reparasuite.api.dto.EquipoCrearRequest;
 import com.reparasuite.api.dto.EquipoDetalleDto;
 import com.reparasuite.api.dto.EquipoResumenDto;
+import com.reparasuite.api.exception.ConflictException;
+import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.CategoriaEquipo;
 import com.reparasuite.api.model.CategoriaEquipoFalla;
 import com.reparasuite.api.model.Cliente;
@@ -80,14 +82,14 @@ public class EquiposService {
 
   public EquipoDetalleDto obtener(UUID id) {
     Equipo e = equipoRepo.findById(id)
-        .orElseThrow(() -> new RuntimeException("Equipo no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Equipo no encontrado"));
     return toDetalle(e);
   }
 
   @Transactional
   public EquipoDetalleDto crear(EquipoCrearRequest req) {
     Cliente cliente = clienteRepo.findById(UUID.fromString(req.clienteId()))
-        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
 
     CategoriaEquipo categoria = resolveCategoria(req.categoriaEquipoId());
 
@@ -114,10 +116,10 @@ public class EquiposService {
   @Transactional
   public EquipoDetalleDto actualizar(UUID id, EquipoCrearRequest req) {
     Equipo e = equipoRepo.findById(id)
-        .orElseThrow(() -> new RuntimeException("Equipo no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Equipo no encontrado"));
 
     Cliente cliente = clienteRepo.findById(UUID.fromString(req.clienteId()))
-        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
 
     CategoriaEquipo categoria = resolveCategoria(req.categoriaEquipoId());
 
@@ -142,7 +144,7 @@ public class EquiposService {
   @Transactional
   public void desactivar(UUID id) {
     Equipo e = equipoRepo.findById(id)
-        .orElseThrow(() -> new RuntimeException("Equipo no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Equipo no encontrado"));
     e.setEstadoActivo(false);
     equipoRepo.save(e);
   }
@@ -157,7 +159,7 @@ public class EquiposService {
   public CategoriaEquipoDto crearCategoria(CategoriaEquipoGuardarRequest req) {
     String codigo = normalizeCode(req.codigo());
     if (categoriaRepo.findByCodigoIgnoreCase(codigo).isPresent()) {
-      throw new RuntimeException("Ya existe una categoría con ese código");
+      throw new ConflictException("Ya existe una categoría con ese código");
     }
 
     CategoriaEquipo c = new CategoriaEquipo();
@@ -175,12 +177,12 @@ public class EquiposService {
   @Transactional
   public CategoriaEquipoDto actualizarCategoria(UUID id, CategoriaEquipoGuardarRequest req) {
     CategoriaEquipo c = categoriaRepo.findById(id)
-        .orElseThrow(() -> new RuntimeException("Categoría no encontrada"));
+        .orElseThrow(() -> new NotFoundException("Categoría no encontrada"));
 
     String codigo = normalizeCode(req.codigo());
     categoriaRepo.findByCodigoIgnoreCase(codigo).ifPresent(existing -> {
       if (!existing.getId().equals(id)) {
-        throw new RuntimeException("Ya existe una categoría con ese código");
+        throw new ConflictException("Ya existe una categoría con ese código");
       }
     });
 
@@ -205,7 +207,7 @@ public class EquiposService {
     if (categoriaId == null || categoriaId.isBlank()) return null;
 
     return categoriaRepo.findById(UUID.fromString(categoriaId))
-        .orElseThrow(() -> new RuntimeException("Categoría de equipo no encontrada"));
+        .orElseThrow(() -> new NotFoundException("Categoría de equipo no encontrada"));
   }
 
   private EquipoResumenDto toResumen(Equipo e) {
@@ -281,7 +283,7 @@ public class EquiposService {
   private String cleanRequired(String value, String fieldName) {
     String x = limpiarNullable(value);
     if (x == null) {
-      throw new RuntimeException("El campo " + fieldName + " es obligatorio");
+      throw new IllegalArgumentException("El campo " + fieldName + " es obligatorio");
     }
     return x;
   }

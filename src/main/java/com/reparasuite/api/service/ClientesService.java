@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import com.reparasuite.api.dto.ApiListaResponse;
 import com.reparasuite.api.dto.ClienteOtItemDto;
 import com.reparasuite.api.dto.ClienteResumenDto;
+import com.reparasuite.api.exception.ConflictException;
+import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.Cliente;
 import com.reparasuite.api.repo.ClienteRepo;
 import com.reparasuite.api.repo.OrdenTrabajoRepo;
@@ -27,19 +29,22 @@ public class ClientesService {
   private final TicketSolicitudRepo ticketRepo;
   private final TicketMensajeRepo ticketMensajeRepo;
   private final TicketFotoRepo ticketFotoRepo;
+  private final SecureUploadService secureUploadService;
 
   public ClientesService(
       ClienteRepo clienteRepo,
       OrdenTrabajoRepo otRepo,
       TicketSolicitudRepo ticketRepo,
       TicketMensajeRepo ticketMensajeRepo,
-      TicketFotoRepo ticketFotoRepo
+      TicketFotoRepo ticketFotoRepo,
+      SecureUploadService secureUploadService
   ) {
     this.clienteRepo = clienteRepo;
     this.otRepo = otRepo;
     this.ticketRepo = ticketRepo;
     this.ticketMensajeRepo = ticketMensajeRepo;
     this.ticketFotoRepo = ticketFotoRepo;
+    this.secureUploadService = secureUploadService;
   }
 
   public ApiListaResponse<ClienteResumenDto> listar(String query, int page, int size) {
@@ -67,7 +72,7 @@ public class ClientesService {
 
   public ClienteResumenDto obtener(UUID id) {
     Cliente c = clienteRepo.findById(id)
-        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
 
     return toResumen(c);
   }
@@ -86,14 +91,14 @@ public class ClientesService {
 
     return new ApiListaResponse<>(
         p.getContent().stream()
-        .map(ot -> new ClienteOtItemDto(
-        	    ot.getId(),
-        	    ot.getCodigo(),
-        	    ot.getEstado().name(),
-        	    ot.getTipo().name(),
-        	    ot.getUpdatedAt(),
-        	    ot.getTecnico() != null ? ot.getTecnico().getNombre() : null
-        	))
+            .map(ot -> new ClienteOtItemDto(
+                ot.getId(),
+                ot.getCodigo(),
+                ot.getEstado().name(),
+                ot.getTipo().name(),
+                ot.getUpdatedAt(),
+                ot.getTecnico() != null ? ot.getTecnico().getNombre() : null
+            ))
             .toList(),
         p.getTotalElements()
     );
@@ -102,15 +107,18 @@ public class ClientesService {
   @Transactional
   public void eliminar(UUID clienteId) {
     Cliente c = clienteRepo.findById(clienteId)
-        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
 
     long totalOts = otRepo.countByCliente_Id(clienteId);
     if (totalOts > 0) {
-      throw new IllegalStateException("No se puede eliminar el cliente porque tiene órdenes de trabajo asociadas");
+      throw new ConflictException("No se puede eliminar el cliente porque tiene órdenes de trabajo asociadas");
     }
 
     var tickets = ticketRepo.findByCliente_Id(clienteId, Pageable.unpaged()).getContent();
     for (var t : tickets) {
+      ticketFotoRepo.findByTicket_IdOrderByCreatedAtAsc(t.getId())
+          .forEach(f -> secureUploadService.deleteByUrl(f.getUrl()));
+
       ticketMensajeRepo.deleteByTicket_Id(t.getId());
       ticketFotoRepo.deleteByTicket_Id(t.getId());
       ticketRepo.delete(t);

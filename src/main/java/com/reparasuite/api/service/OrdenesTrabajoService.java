@@ -1,22 +1,14 @@
 package com.reparasuite.api.service;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,6 +30,9 @@ import com.reparasuite.api.dto.PagoDto;
 import com.reparasuite.api.dto.PresupuestoDto;
 import com.reparasuite.api.dto.PresupuestoGuardarRequest;
 import com.reparasuite.api.dto.UsuarioResumenDto;
+import com.reparasuite.api.exception.BadRequestException;
+import com.reparasuite.api.exception.ForbiddenException;
+import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.ActorTipo;
 import com.reparasuite.api.model.CategoriaEquipo;
 import com.reparasuite.api.model.CitaOt;
@@ -97,9 +92,8 @@ public class OrdenesTrabajoService {
   private final TicketMensajeRepo ticketMensajeRepo;
   private final EquipoRepo equipoRepo;
   private final CategoriaEquipoRepo categoriaEquipoRepo;
-
-  @Value("${reparasuite.upload-dir}")
-  private String uploadDir;
+  private final AuthContextService authContextService;
+  private final SecureUploadService secureUploadService;
 
   public OrdenesTrabajoService(
       OrdenTrabajoRepo otRepo,
@@ -116,7 +110,9 @@ public class OrdenesTrabajoService {
       TicketSolicitudRepo ticketRepo,
       TicketMensajeRepo ticketMensajeRepo,
       EquipoRepo equipoRepo,
-      CategoriaEquipoRepo categoriaEquipoRepo
+      CategoriaEquipoRepo categoriaEquipoRepo,
+      AuthContextService authContextService,
+      SecureUploadService secureUploadService
   ) {
     this.otRepo = otRepo;
     this.clienteRepo = clienteRepo;
@@ -133,6 +129,8 @@ public class OrdenesTrabajoService {
     this.ticketMensajeRepo = ticketMensajeRepo;
     this.equipoRepo = equipoRepo;
     this.categoriaEquipoRepo = categoriaEquipoRepo;
+    this.authContextService = authContextService;
+    this.secureUploadService = secureUploadService;
   }
 
   public ApiListaResponse<OtListaItemDto> listar(String query, int page, int size) {
@@ -148,9 +146,7 @@ public class OrdenesTrabajoService {
       int page,
       int size
   ) {
-    if (ctx().rolCliente()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireBackoffice();
 
     int pageSafe = Math.max(page, 0);
     int sizeSafe = Math.max(size, 1);
@@ -178,15 +174,12 @@ public class OrdenesTrabajoService {
   public OtDetalleDto obtener(String idOrCodigo) {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
-    if (ctx().rolCliente()) {
-      UUID clienteId = ctx().clienteId();
-      if (!ot.getCliente().getId().equals(clienteId)) {
-        throw new SecurityException("No autorizado");
-      }
+    if (auth().isCliente() && !ot.getCliente().getId().equals(auth().id())) {
+      throw new ForbiddenException("No autorizado");
     }
 
     UUID otId = ot.getId();
-    boolean cliente = ctx().rolCliente();
+    boolean cliente = auth().isCliente();
 
     List<NotaDto> notas = notaRepo.findByOt_IdOrderByCreatedAtDesc(otId).stream()
         .filter(n -> !cliente || n.isVisibleCliente())
@@ -272,19 +265,15 @@ public class OrdenesTrabajoService {
         ot.getEstado().name(),
         ot.getTipo().name(),
         ot.getPrioridad().name(),
-
         ot.getEquipo(),
         ot.getEquipoRegistrado() != null ? ot.getEquipoRegistrado().getId() : null,
         ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getId() : null,
         ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getNombre() : null,
         ot.getFallaReportada(),
-
         ot.getDescripcion(),
-
         ot.getFallaDetectada(),
         ot.getDiagnosticoTecnico(),
         ot.getTrabajoARealizar(),
-
         clienteDto,
         tecnicoDto,
         ot.getFechaPrevista(),
@@ -306,62 +295,15 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public CrearResponse crear(OtCrearRequest req) {
-    if (ctx().rolCliente()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireBackoffice();
 
-    Cliente cliente;
-    if (req.cliente().id() != null && !req.cliente().id().isBlank()) {
-      cliente = clienteRepo.findById(UUID.fromString(req.cliente().id()))
-          .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
-
-      if (req.cliente().nombre() != null && !req.cliente().nombre().isBlank()) {
-        cliente.setNombre(req.cliente().nombre().trim());
-      }
-      if (req.cliente().telefono() != null) {
-        cliente.setTelefono(limpiarNullable(req.cliente().telefono()));
-      }
-      cliente.setEmail(normalizarEmail(req.cliente().email()));
-      cliente = clienteRepo.save(cliente);
-
-    } else {
-      String emailNorm = normalizarEmail(req.cliente().email());
-      cliente = emailNorm != null ? clienteRepo.findByEmailIgnoreCase(emailNorm).orElse(null) : null;
-
-      if (cliente == null) {
-        cliente = new Cliente();
-      }
-
-      cliente.setNombre(req.cliente().nombre());
-      cliente.setTelefono(req.cliente().telefono());
-      cliente.setEmail(emailNorm);
-      cliente = clienteRepo.save(cliente);
-    }
-
-    Usuario tecnico = null;
-    if (req.tecnicoId() != null && !req.tecnicoId().isBlank()) {
-      tecnico = usuarioRepo.findById(UUID.fromString(req.tecnicoId()))
-          .orElseThrow(() -> new RuntimeException("Técnico no encontrado"));
-    }
-
-    Equipo equipoRegistrado = null;
-    if (req.equipoId() != null && !req.equipoId().isBlank()) {
-      equipoRegistrado = equipoRepo.findById(UUID.fromString(req.equipoId()))
-          .orElseThrow(() -> new RuntimeException("Equipo no encontrado"));
-
-      if (!equipoRegistrado.getCliente().getId().equals(cliente.getId())) {
-        throw new RuntimeException("El equipo seleccionado no pertenece al cliente");
-      }
-    }
-
-    CategoriaEquipo categoriaEquipo = null;
-    if (req.categoriaEquipoId() != null && !req.categoriaEquipoId().isBlank()) {
-      categoriaEquipo = categoriaEquipoRepo.findById(UUID.fromString(req.categoriaEquipoId()))
-          .orElseThrow(() -> new RuntimeException("Categoría de equipo no encontrada"));
-    }
+    Cliente cliente = resolveOrCreateCliente(req);
+    Usuario tecnico = resolveTecnico(req.tecnicoId());
+    Equipo equipoRegistrado = resolveEquipo(req.equipoId(), cliente.getId());
+    CategoriaEquipo categoriaEquipo = resolveCategoriaEquipo(req.categoriaEquipoId());
 
     Taller t = tallerRepo.findById(1L)
-        .orElseThrow(() -> new RuntimeException("Taller no configurado"));
+        .orElseThrow(() -> new NotFoundException("Taller no configurado"));
 
     String codigo = generarCodigo(t.getPrefijoOt());
 
@@ -390,25 +332,7 @@ public class OrdenesTrabajoService {
 
     ot = otRepo.save(ot);
 
-    if (req.ticketId() != null && !req.ticketId().isBlank()) {
-      TicketSolicitud ticket = ticketRepo.findById(UUID.fromString(req.ticketId()))
-          .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
-
-      ticket.setOrdenTrabajoId(ot.getId());
-
-      if (ticket.getEstado() == EstadoTicket.ABIERTO) {
-        ticket.setEstado(EstadoTicket.EN_REVISION);
-      }
-
-      ticketRepo.save(ticket);
-
-      TicketMensaje m = new TicketMensaje();
-      m.setTicket(ticket);
-      m.setRemitenteTipo(TipoRemitente.USUARIO);
-      m.setRemitenteNombre(nombreActorBackoffice());
-      m.setContenido("Se creó una OT desde este ticket: " + ot.getCodigo());
-      ticketMensajeRepo.save(m);
-    }
+    vincularTicketSiAplica(req.ticketId(), ot);
 
     String desc = "Orden creada (" + tipo.name() + "/" + prioridad.name() + ") para "
         + cliente.getNombre() + ": " + recortar(req.descripcion(), 200);
@@ -420,9 +344,7 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public OtDetalleDto actualizarRevisionTecnica(String idOrCodigo, OtRevisionTecnicaRequest req) {
-    if (!ctx().rolBackoffice()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireBackoffice();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
@@ -439,9 +361,7 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public void cambiarEstado(String idOrCodigo, String estado) {
-    if (ctx().rolCliente()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireBackoffice();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
     EstadoOt nuevo = parseEnumRequired(EstadoOt.class, estado, "estado");
@@ -456,10 +376,8 @@ public class OrdenesTrabajoService {
   public void anadirNota(String idOrCodigo, String contenido, boolean visibleCliente) {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
-    if (ctx().rolCliente()) {
-      if (!ot.getCliente().getId().equals(ctx().clienteId())) {
-        throw new SecurityException("No autorizado");
-      }
+    if (auth().isCliente()) {
+      requireClienteOwner(ot);
       visibleCliente = true;
     }
 
@@ -480,41 +398,27 @@ public class OrdenesTrabajoService {
   public FotoDto subirFoto(String idOrCodigo, MultipartFile file, boolean visibleCliente) throws IOException {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
-    if (ctx().rolCliente()) {
-      if (!ot.getCliente().getId().equals(ctx().clienteId())) {
-        throw new SecurityException("No autorizado");
-      }
+    if (auth().isCliente()) {
+      requireClienteOwner(ot);
       visibleCliente = true;
     }
 
-    Files.createDirectories(Paths.get(uploadDir));
-
-    String filename = "ot-" + ot.getId() + "-" + UUID.randomUUID() + "-" + safeName(file.getOriginalFilename());
-    Path path = Paths.get(uploadDir).resolve(filename);
-    Files.write(path, file.getBytes(), StandardOpenOption.CREATE_NEW);
-
-    String url = "/files/" + filename;
+    var stored = secureUploadService.storeOtImage(ot.getId(), file);
 
     FotoOt f = new FotoOt();
     f.setOt(ot);
-    f.setUrl(url);
+    f.setUrl(stored.url());
     f.setVisibleCliente(visibleCliente);
     f = fotoRepo.save(f);
 
-    String original = (file.getOriginalFilename() != null && !file.getOriginalFilename().isBlank())
-        ? file.getOriginalFilename()
-        : filename;
-
-    registrarEvento(ot, EventoHistorialOt.FOTO_SUBIDA, "Archivo subido: " + original + " (" + url + ")");
+    registrarEvento(ot, EventoHistorialOt.FOTO_SUBIDA, "Archivo subido: " + stored.originalFilename());
 
     return new FotoDto(f.getId(), f.getUrl(), f.getCreatedAt());
   }
 
   @Transactional
   public PresupuestoDto guardarPresupuesto(String idOrCodigo, PresupuestoGuardarRequest req) {
-    if (ctx().rolCliente()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireBackoffice();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
@@ -526,7 +430,7 @@ public class OrdenesTrabajoService {
     });
 
     if (p.getEstado() == EstadoPresupuesto.ACEPTADO || p.getEstado() == EstadoPresupuesto.RECHAZADO) {
-      throw new RuntimeException("No se puede editar un presupuesto " + p.getEstado().name());
+      throw new BadRequestException("No se puede editar un presupuesto " + p.getEstado().name());
     }
 
     p.setImporte(req.importe());
@@ -539,19 +443,17 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public PresupuestoDto enviarPresupuesto(String idOrCodigo) {
-    if (ctx().rolCliente()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireBackoffice();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
     PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId())
-        .orElseThrow(() -> new RuntimeException("Presupuesto no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Presupuesto no encontrado"));
 
     if (p.getEstado() == EstadoPresupuesto.ACEPTADO) {
-      throw new RuntimeException("Presupuesto ya aceptado");
+      throw new BadRequestException("Presupuesto ya aceptado");
     }
     if (p.getEstado() == EstadoPresupuesto.RECHAZADO) {
-      throw new RuntimeException("Presupuesto rechazado: cree uno nuevo (MVP)");
+      throw new BadRequestException("Presupuesto rechazado: cree uno nuevo (MVP)");
     }
 
     p.setEstado(EstadoPresupuesto.ENVIADO);
@@ -577,23 +479,19 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public void aceptarPresupuesto(String idOrCodigo, boolean acepto) {
-    if (!ctx().rolCliente()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireCliente();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) {
-      throw new SecurityException("No autorizado");
-    }
+    requireClienteOwner(ot);
 
     PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId())
-        .orElseThrow(() -> new RuntimeException("Presupuesto no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Presupuesto no encontrado"));
 
     if (p.getEstado() != EstadoPresupuesto.ENVIADO) {
-      throw new RuntimeException("Presupuesto no aceptable en estado: " + p.getEstado().name());
+      throw new BadRequestException("Presupuesto no aceptable en estado: " + p.getEstado().name());
     }
     if (!acepto) {
-      throw new RuntimeException("Debe aceptar el check de aceptación");
+      throw new BadRequestException("Debe aceptar el check de aceptación");
     }
 
     p.setEstado(EstadoPresupuesto.ACEPTADO);
@@ -610,20 +508,16 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public void rechazarPresupuesto(String idOrCodigo) {
-    if (!ctx().rolCliente()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireCliente();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) {
-      throw new SecurityException("No autorizado");
-    }
+    requireClienteOwner(ot);
 
     PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId())
-        .orElseThrow(() -> new RuntimeException("Presupuesto no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Presupuesto no encontrado"));
 
     if (p.getEstado() != EstadoPresupuesto.ENVIADO) {
-      throw new RuntimeException("Presupuesto no rechazable en estado: " + p.getEstado().name());
+      throw new BadRequestException("Presupuesto no rechazable en estado: " + p.getEstado().name());
     }
 
     p.setEstado(EstadoPresupuesto.RECHAZADO);
@@ -638,14 +532,10 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public void marcarTransferencia(String idOrCodigo) {
-    if (!ctx().rolCliente()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireCliente();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) {
-      throw new SecurityException("No autorizado");
-    }
+    requireClienteOwner(ot);
 
     PagoOt p = pagoRepo.findByOt_Id(ot.getId()).orElseGet(() -> {
       PagoOt x = new PagoOt();
@@ -663,39 +553,27 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public PagoDto subirComprobantePago(String idOrCodigo, MultipartFile file) throws IOException {
-    if (!ctx().rolCliente()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireCliente();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(ctx().clienteId())) {
-      throw new SecurityException("No autorizado");
-    }
+    requireClienteOwner(ot);
 
     PagoOt p = pagoRepo.findByOt_Id(ot.getId())
-        .orElseThrow(() -> new RuntimeException("Pago no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Pago no encontrado"));
 
-    Files.createDirectories(Paths.get(uploadDir));
+    var stored = secureUploadService.storePaymentReceipt(ot.getId(), file);
 
-    String filename = "pago-" + ot.getId() + "-" + UUID.randomUUID() + "-" + safeName(file.getOriginalFilename());
-    Path path = Paths.get(uploadDir).resolve(filename);
-    Files.write(path, file.getBytes(), StandardOpenOption.CREATE_NEW);
-
-    String url = "/files/" + filename;
-
-    p.setComprobanteUrl(url);
+    p.setComprobanteUrl(stored.url());
     p.setEstado(EstadoPagoOt.COMPROBANTE_SUBIDO);
     p = pagoRepo.save(p);
 
-    registrarEvento(ot, EventoHistorialOt.PAGO_COMPROBANTE_SUBIDO, "Comprobante de pago subido (" + url + ")");
+    registrarEvento(ot, EventoHistorialOt.PAGO_COMPROBANTE_SUBIDO, "Comprobante de pago subido");
     return new PagoDto(p.getId(), p.getEstado().name(), p.getImporte(), p.getComprobanteUrl());
   }
 
   @Transactional
   public void confirmarPagoRecibido(String idOrCodigo) {
-    if (!ctx().rolBackoffice()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireBackoffice();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
@@ -719,34 +597,32 @@ public class OrdenesTrabajoService {
 
     registrarEvento(ot, EventoHistorialOt.PAGO_MARCADO_TRANSFERENCIA, "Backoffice confirmó pago recibido");
   }
-
+  
   private EstadoPagoOt resolveEstadoPagoConfirmado() {
-    for (String n : List.of("PAGADO", "CONFIRMADO", "RECIBIDO")) {
+    for (String n : List.of("CONFIRMADO", "PAGADO", "RECIBIDO")) {
       try {
         return EstadoPagoOt.valueOf(n);
       } catch (IllegalArgumentException ignored) {
       }
     }
-    return EstadoPagoOt.MARCADO_TRANSFERENCIA;
+    return EstadoPagoOt.CONFIRMADO;
   }
 
   @Transactional
   public CitaDto reservarCita(String idOrCodigo, CitaRequest req) {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
-    if (ctx().rolCliente()) {
-      if (!ot.getCliente().getId().equals(ctx().clienteId())) {
-        throw new SecurityException("No autorizado");
-      }
-    } else if (!ctx().rolBackoffice()) {
-      throw new SecurityException("No autorizado");
+    if (auth().isCliente()) {
+      requireClienteOwner(ot);
+    } else if (!auth().isBackoffice()) {
+      throw new ForbiddenException("No autorizado");
     }
 
     OffsetDateTime inicio = OffsetDateTime.parse(req.inicio());
     OffsetDateTime fin = OffsetDateTime.parse(req.fin());
 
     if (!fin.isAfter(inicio)) {
-      throw new IllegalArgumentException("La fecha/hora fin debe ser mayor que inicio");
+      throw new BadRequestException("La fecha/hora fin debe ser mayor que inicio");
     }
 
     CitaOt c = new CitaOt();
@@ -759,7 +635,7 @@ public class OrdenesTrabajoService {
     registrarEvento(
         ot,
         EventoHistorialOt.CITA_RESERVADA,
-        (ctx().rolCliente() ? "Cliente" : "Backoffice") + " programó cita: " + c.getInicio()
+        (auth().isCliente() ? "Cliente" : "Backoffice") + " programó cita: " + c.getInicio()
     );
 
     return new CitaDto(c.getId(), c.getInicio(), c.getFin(), c.getEstado().name());
@@ -768,23 +644,21 @@ public class OrdenesTrabajoService {
   @Transactional
   public CitaDto reprogramarCita(UUID citaId, CitaRequest req) {
     CitaOt c = citaRepo.findById(citaId)
-        .orElseThrow(() -> new RuntimeException("Cita no encontrada"));
+        .orElseThrow(() -> new NotFoundException("Cita no encontrada"));
 
     OrdenTrabajo ot = c.getOt();
 
-    if (ctx().rolCliente()) {
-      if (!ot.getCliente().getId().equals(ctx().clienteId())) {
-        throw new SecurityException("No autorizado");
-      }
-    } else if (!ctx().rolBackoffice()) {
-      throw new SecurityException("No autorizado");
+    if (auth().isCliente()) {
+      requireClienteOwner(ot);
+    } else if (!auth().isBackoffice()) {
+      throw new ForbiddenException("No autorizado");
     }
 
     OffsetDateTime inicio = OffsetDateTime.parse(req.inicio());
     OffsetDateTime fin = OffsetDateTime.parse(req.fin());
 
     if (!fin.isAfter(inicio)) {
-      throw new IllegalArgumentException("La fecha/hora fin debe ser mayor que inicio");
+      throw new BadRequestException("La fecha/hora fin debe ser mayor que inicio");
     }
 
     c.setInicio(inicio);
@@ -795,7 +669,7 @@ public class OrdenesTrabajoService {
     registrarEvento(
         ot,
         EventoHistorialOt.CITA_REPROGRAMADA,
-        (ctx().rolCliente() ? "Cliente" : "Backoffice") + " reprogramó cita: " + c.getInicio()
+        (auth().isCliente() ? "Cliente" : "Backoffice") + " reprogramó cita: " + c.getInicio()
     );
 
     return new CitaDto(c.getId(), c.getInicio(), c.getFin(), c.getEstado().name());
@@ -805,21 +679,21 @@ public class OrdenesTrabajoService {
   public MensajeDto enviarMensaje(String idOrCodigo, String contenido) {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
-    if (ctx().rolCliente() && !ot.getCliente().getId().equals(ctx().clienteId())) {
-      throw new SecurityException("No autorizado");
+    if (auth().isCliente()) {
+      requireClienteOwner(ot);
     }
 
     MensajeOt m = new MensajeOt();
     m.setOt(ot);
 
-    if (ctx().rolCliente()) {
-      Cliente c = clienteRepo.findById(ctx().clienteId())
-          .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+    if (auth().isCliente()) {
+      Cliente c = clienteRepo.findById(auth().id())
+          .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
       m.setRemitenteTipo(TipoRemitente.CLIENTE);
       m.setRemitenteNombre(c.getNombre());
     } else {
-      Usuario u = usuarioRepo.findById(ctx().usuarioId())
-          .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+      Usuario u = usuarioRepo.findById(auth().id())
+          .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
       m.setRemitenteTipo(TipoRemitente.USUARIO);
       m.setRemitenteNombre(u.getNombre());
     }
@@ -842,31 +716,19 @@ public class OrdenesTrabajoService {
   @Transactional
   public CrearDesdeTicketResponse crearDesdeTicket(TicketSolicitud ticket) {
     Taller t = tallerRepo.findById(1L)
-        .orElseThrow(() -> new RuntimeException("Taller no configurado"));
+        .orElseThrow(() -> new NotFoundException("Taller no configurado"));
 
     String codigo = generarCodigo(t.getPrefijoOt());
 
-    TipoOt tipo;
-    PrioridadOt prioridad;
+    TipoOt tipo = parseTipoTicket(ticket.getTipoServicioSugerido());
+    PrioridadOt prioridad = PrioridadOt.MEDIA;
 
-    try {
-      tipo = TipoOt.valueOf(readTipoServicioTicket(ticket, "DOMICILIO"));
-    } catch (Exception e) {
-      tipo = TipoOt.DOMICILIO;
-    }
-
-    try {
-      prioridad = PrioridadOt.valueOf("MEDIA");
-    } catch (Exception e) {
-      prioridad = PrioridadOt.values()[0];
-    }
-
-    String equipo = limpiarNullable(readEquipoTicket(ticket));
+    String equipo = limpiarNullable(ticket.getEquipo());
     if (equipo == null) {
       equipo = limpiarNullable(ticket.getAsunto());
     }
 
-    String falla = limpiarNullable(readDescripcionFallaTicket(ticket));
+    String falla = limpiarNullable(ticket.getDescripcionFalla());
     String descripcionLimpia = (falla != null && !falla.isBlank())
         ? falla
         : limpiarDescripcionDesdeTicket(ticket.getDescripcion());
@@ -882,7 +744,7 @@ public class OrdenesTrabajoService {
     ot.setDescripcion(descripcionLimpia);
     ot.setEstado(EstadoOt.RECIBIDA);
 
-    String direccion = limpiarNullable(readDireccionTicket(ticket));
+    String direccion = limpiarNullable(ticket.getDireccion());
     if (tipo == TipoOt.DOMICILIO && direccion != null) {
       ot.setDireccion(direccion);
     }
@@ -900,9 +762,7 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public void eliminar(String idOrCodigo) {
-    if (!ctx().rolBackoffice()) {
-      throw new SecurityException("No autorizado");
-    }
+    requireBackoffice();
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
     UUID otId = ot.getId();
@@ -916,6 +776,12 @@ public class OrdenesTrabajoService {
       }
       ticketRepo.save(t);
     }
+
+    fotoRepo.findByOt_IdOrderByCreatedAtDesc(otId)
+        .forEach(f -> secureUploadService.deleteByUrl(f.getUrl()));
+
+    pagoRepo.findByOt_Id(otId)
+        .ifPresent(p -> secureUploadService.deleteByUrl(p.getComprobanteUrl()));
 
     mensajeRepo.deleteByOt_Id(otId);
     citaRepo.deleteByOt_Id(otId);
@@ -946,15 +812,15 @@ public class OrdenesTrabajoService {
     h.setEvento(evento);
     h.setDescripcion(descripcion);
 
-    if (ctx().rolCliente()) {
-      Cliente c = clienteRepo.findById(ctx().clienteId())
-          .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+    if (auth().isCliente()) {
+      Cliente c = clienteRepo.findById(auth().id())
+          .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
       h.setActorTipo(ActorTipo.CLIENTE);
       h.setActorNombre(c.getNombre());
       h.setUsuario(null);
     } else {
-      Usuario u = usuarioRepo.findById(ctx().usuarioId())
-          .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+      Usuario u = usuarioRepo.findById(auth().id())
+          .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
       h.setActorTipo(ActorTipo.USUARIO);
       h.setActorNombre(u.getNombre());
       h.setUsuario(u);
@@ -965,22 +831,123 @@ public class OrdenesTrabajoService {
 
   private OrdenTrabajo resolverOt(String idOrCodigo) {
     if (idOrCodigo == null || idOrCodigo.isBlank()) {
-      throw new RuntimeException("ID de orden inválido");
+      throw new BadRequestException("ID de orden inválido");
     }
 
     try {
       UUID id = UUID.fromString(idOrCodigo);
       return otRepo.findById(id)
-          .orElseThrow(() -> new RuntimeException("Orden no encontrada"));
+          .orElseThrow(() -> new NotFoundException("Orden no encontrada"));
     } catch (IllegalArgumentException ex) {
       return otRepo.findByCodigoIgnoreCase(idOrCodigo.trim())
-          .orElseThrow(() -> new RuntimeException("Orden no encontrada"));
+          .orElseThrow(() -> new NotFoundException("Orden no encontrada"));
     }
   }
 
-  private String safeName(String n) {
-    if (n == null) return "file.bin";
-    return n.replaceAll("[^a-zA-Z0-9._-]", "_");
+  private Cliente resolveOrCreateCliente(OtCrearRequest req) {
+    if (req.cliente().id() != null && !req.cliente().id().isBlank()) {
+      Cliente cliente = clienteRepo.findById(UUID.fromString(req.cliente().id()))
+          .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
+
+      if (req.cliente().nombre() != null && !req.cliente().nombre().isBlank()) {
+        cliente.setNombre(req.cliente().nombre().trim());
+      }
+      if (req.cliente().telefono() != null) {
+        cliente.setTelefono(limpiarNullable(req.cliente().telefono()));
+      }
+      cliente.setEmail(normalizarEmail(req.cliente().email()));
+      return clienteRepo.save(cliente);
+    }
+
+    String emailNorm = normalizarEmail(req.cliente().email());
+    Cliente cliente = emailNorm != null
+        ? clienteRepo.findByEmailIgnoreCase(emailNorm).orElse(null)
+        : null;
+
+    if (cliente == null) {
+      cliente = new Cliente();
+    }
+
+    cliente.setNombre(req.cliente().nombre());
+    cliente.setTelefono(req.cliente().telefono());
+    cliente.setEmail(emailNorm);
+    return clienteRepo.save(cliente);
+  }
+
+  private Usuario resolveTecnico(String tecnicoId) {
+    if (tecnicoId == null || tecnicoId.isBlank()) return null;
+
+    return usuarioRepo.findById(UUID.fromString(tecnicoId))
+        .orElseThrow(() -> new NotFoundException("Técnico no encontrado"));
+  }
+
+  private Equipo resolveEquipo(String equipoId, UUID clienteId) {
+    if (equipoId == null || equipoId.isBlank()) return null;
+
+    Equipo equipo = equipoRepo.findById(UUID.fromString(equipoId))
+        .orElseThrow(() -> new NotFoundException("Equipo no encontrado"));
+
+    if (!equipo.getCliente().getId().equals(clienteId)) {
+      throw new BadRequestException("El equipo seleccionado no pertenece al cliente");
+    }
+
+    return equipo;
+  }
+
+  private CategoriaEquipo resolveCategoriaEquipo(String categoriaEquipoId) {
+    if (categoriaEquipoId == null || categoriaEquipoId.isBlank()) return null;
+
+    return categoriaEquipoRepo.findById(UUID.fromString(categoriaEquipoId))
+        .orElseThrow(() -> new NotFoundException("Categoría de equipo no encontrada"));
+  }
+
+  private void vincularTicketSiAplica(String ticketId, OrdenTrabajo ot) {
+    if (ticketId == null || ticketId.isBlank()) return;
+
+    TicketSolicitud ticket = ticketRepo.findById(UUID.fromString(ticketId))
+        .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
+
+    ticket.setOrdenTrabajoId(ot.getId());
+
+    if (ticket.getEstado() == EstadoTicket.ABIERTO) {
+      ticket.setEstado(EstadoTicket.EN_REVISION);
+    }
+
+    ticketRepo.save(ticket);
+
+    TicketMensaje m = new TicketMensaje();
+    m.setTicket(ticket);
+    m.setRemitenteTipo(TipoRemitente.USUARIO);
+    m.setRemitenteNombre(auth().displayName());
+    m.setContenido("Se creó una OT desde este ticket: " + ot.getCodigo());
+    ticketMensajeRepo.save(m);
+  }
+
+  private void requireBackoffice() {
+    if (!auth().isBackoffice()) {
+      throw new ForbiddenException("No autorizado");
+    }
+  }
+
+  private void requireCliente() {
+    if (!auth().isCliente()) {
+      throw new ForbiddenException("No autorizado");
+    }
+  }
+
+  private void requireClienteOwner(OrdenTrabajo ot) {
+    if (!ot.getCliente().getId().equals(auth().id())) {
+      throw new ForbiddenException("No autorizado");
+    }
+  }
+
+  private TipoOt parseTipoTicket(String raw) {
+    if (raw == null || raw.isBlank()) return TipoOt.DOMICILIO;
+    try {
+      return TipoOt.valueOf(raw.trim().toUpperCase());
+    } catch (IllegalArgumentException ex) {
+      return TipoOt.DOMICILIO;
+    }
   }
 
   private String generarCodigo(String prefijo) {
@@ -1002,13 +969,11 @@ public class OrdenesTrabajoService {
         ot.getEstado().name(),
         ot.getTipo().name(),
         ot.getPrioridad().name(),
-
         ot.getEquipo(),
         ot.getEquipoRegistrado() != null ? ot.getEquipoRegistrado().getId() : null,
         ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getId() : null,
         ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getNombre() : null,
         ot.getFallaReportada(),
-
         ot.getCliente().getNombre(),
         ot.getTecnico() != null ? ot.getTecnico().getNombre() : null,
         ot.getUpdatedAt()
@@ -1025,39 +990,6 @@ public class OrdenesTrabajoService {
     if (s == null) return null;
     String t = s.trim();
     return t.isBlank() ? null : t;
-  }
-
-  private String readEquipoTicket(TicketSolicitud t) {
-    try {
-      return (String) t.getClass().getMethod("getEquipo").invoke(t);
-    } catch (Throwable e) {
-      return null;
-    }
-  }
-
-  private String readDescripcionFallaTicket(TicketSolicitud t) {
-    try {
-      return (String) t.getClass().getMethod("getDescripcionFalla").invoke(t);
-    } catch (Throwable e) {
-      return null;
-    }
-  }
-
-  private String readDireccionTicket(TicketSolicitud t) {
-    try {
-      return (String) t.getClass().getMethod("getDireccion").invoke(t);
-    } catch (Throwable e) {
-      return null;
-    }
-  }
-
-  private String readTipoServicioTicket(TicketSolicitud t, String fallback) {
-    try {
-      String v = (String) t.getClass().getMethod("getTipoServicioSugerido").invoke(t);
-      return (v == null || v.isBlank()) ? fallback : v;
-    } catch (Throwable e) {
-      return fallback;
-    }
   }
 
   private String limpiarDescripcionDesdeTicket(String descripcionTicket) {
@@ -1079,6 +1011,7 @@ public class OrdenesTrabajoService {
       if (low.startsWith("dirección / ubicación:")) continue;
       if (low.startsWith("direccion / ubicacion:")) continue;
       if (low.startsWith("nota:")) continue;
+      if (low.startsWith("observaciones:")) continue;
 
       if (sb.length() > 0) sb.append("\n");
       sb.append(l);
@@ -1093,14 +1026,14 @@ public class OrdenesTrabajoService {
     try {
       return Enum.valueOf(enumType, raw.trim().toUpperCase());
     } catch (IllegalArgumentException ex) {
-      throw new IllegalArgumentException("Valor inválido para " + fieldName + ": " + raw);
+      throw new BadRequestException("Valor inválido para " + fieldName + ": " + raw);
     }
   }
 
   private <E extends Enum<E>> E parseEnumRequired(Class<E> enumType, String raw, String fieldName) {
     E value = parseEnumNullable(enumType, raw, fieldName);
     if (value == null) {
-      throw new IllegalArgumentException("Falta valor para " + fieldName);
+      throw new BadRequestException("Falta valor para " + fieldName);
     }
     return value;
   }
@@ -1110,59 +1043,11 @@ public class OrdenesTrabajoService {
     try {
       return UUID.fromString(raw.trim());
     } catch (IllegalArgumentException ex) {
-      throw new IllegalArgumentException("UUID inválido para " + fieldName + ": " + raw);
+      throw new BadRequestException("UUID inválido para " + fieldName + ": " + raw);
     }
   }
 
-  private String nombreActorBackoffice() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth instanceof JwtAuthenticationToken jwtAuth) {
-      Object n = jwtAuth.getToken().getClaims().get("nombre");
-      if (n != null) {
-        return String.valueOf(n);
-      }
-      return "Backoffice";
-    }
-    return "Backoffice";
-  }
-
-  private Ctx ctx() {
-    return Ctx.fromSecurityContext();
-  }
-
-  private static class Ctx {
-    final String rol;
-    final String sub;
-
-    private Ctx(String rol, String sub) {
-      this.rol = rol;
-      this.sub = sub;
-    }
-
-    static Ctx fromSecurityContext() {
-      Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-      if (auth instanceof JwtAuthenticationToken jwtAuth) {
-        String rol = String.valueOf(jwtAuth.getToken().getClaims().get("rol"));
-        String sub = jwtAuth.getToken().getSubject();
-        return new Ctx(rol, sub);
-      }
-      throw new RuntimeException("No autenticado");
-    }
-
-    boolean rolCliente() {
-      return "CLIENTE".equalsIgnoreCase(rol);
-    }
-
-    boolean rolBackoffice() {
-      return "ADMIN".equalsIgnoreCase(rol) || "TECNICO".equalsIgnoreCase(rol);
-    }
-
-    UUID clienteId() {
-      return UUID.fromString(sub);
-    }
-
-    UUID usuarioId() {
-      return UUID.fromString(sub);
-    }
+  private AuthContextService.AuthUser auth() {
+    return authContextService.current();
   }
 }

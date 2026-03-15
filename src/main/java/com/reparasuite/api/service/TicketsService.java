@@ -1,18 +1,10 @@
 package com.reparasuite.api.service;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -30,9 +22,8 @@ public class TicketsService {
   private final ClienteRepo clienteRepo;
   private final OrdenesTrabajoService ordenesTrabajoService;
   private final OrdenTrabajoRepo otRepo;
-
-  @Value("${reparasuite.upload-dir}")
-  private String uploadDir;
+  private final AuthContextService authContextService;
+  private final SecureUploadService secureUploadService;
 
   public TicketsService(
       TicketSolicitudRepo ticketRepo,
@@ -40,7 +31,9 @@ public class TicketsService {
       TicketFotoRepo fotoRepo,
       ClienteRepo clienteRepo,
       OrdenesTrabajoService ordenesTrabajoService,
-      OrdenTrabajoRepo otRepo
+      OrdenTrabajoRepo otRepo,
+      AuthContextService authContextService,
+      SecureUploadService secureUploadService
   ) {
     this.ticketRepo = ticketRepo;
     this.msgRepo = msgRepo;
@@ -48,14 +41,12 @@ public class TicketsService {
     this.clienteRepo = clienteRepo;
     this.ordenesTrabajoService = ordenesTrabajoService;
     this.otRepo = otRepo;
+    this.authContextService = authContextService;
+    this.secureUploadService = secureUploadService;
   }
 
-  // =========================
-  // PORTAL CLIENTE
-  // =========================
-
   public ApiListaResponse<TicketListaItemDto> listar(int page, int size) {
-    UUID clienteId = clienteId();
+    UUID clienteId = requireClienteId();
     Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
     Page<TicketSolicitud> p = ticketRepo.findByCliente_Id(clienteId, pageable);
 
@@ -67,11 +58,11 @@ public class TicketsService {
   }
 
   public TicketDetalleDto obtener(String id) {
-    UUID clienteId = clienteId();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow();
+    UUID clienteId = requireClienteId();
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     if (!t.getCliente().getId().equals(clienteId)) {
-      throw new RuntimeException("No autorizado");
+      throw new SecurityException("No autorizado");
     }
 
     return toDetalleDto(t);
@@ -79,8 +70,8 @@ public class TicketsService {
 
   @Transactional
   public TicketDetalleDto crear(TicketCrearRequest req) {
-    UUID clienteId = clienteId();
-    Cliente c = clienteRepo.findById(clienteId).orElseThrow();
+    UUID clienteId = requireClienteId();
+    Cliente c = clienteRepo.findById(clienteId).orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
 
     TicketSolicitud t = new TicketSolicitud();
     t.setCliente(c);
@@ -129,14 +120,14 @@ public class TicketsService {
 
   @Transactional
   public void anadirMensaje(String ticketId, MensajeEnviarRequest req) {
-    UUID clienteId = clienteId();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
+    UUID clienteId = requireClienteId();
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     if (!t.getCliente().getId().equals(clienteId)) {
-      throw new RuntimeException("No autorizado");
+      throw new SecurityException("No autorizado");
     }
 
-    Cliente c = clienteRepo.findById(clienteId).orElseThrow();
+    Cliente c = clienteRepo.findById(clienteId).orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
 
     TicketMensaje m = new TicketMensaje();
     m.setTicket(t);
@@ -150,19 +141,15 @@ public class TicketsService {
 
   @Transactional
   public TicketFotoDto subirFotoCliente(String ticketId, MultipartFile file) throws IOException {
-    UUID clienteId = clienteId();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
+    UUID clienteId = requireClienteId();
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     if (!t.getCliente().getId().equals(clienteId)) {
-      throw new RuntimeException("No autorizado");
+      throw new SecurityException("No autorizado");
     }
 
     return guardarFotoTicket(t, file);
   }
-
-  // =========================
-  // BACKOFFICE
-  // =========================
 
   public ApiListaResponse<TicketBackofficeListaItemDto> listarBackoffice(int page, int size) {
     requireBackofficeRole();
@@ -188,7 +175,7 @@ public class TicketsService {
 
   public TicketDetalleDto obtenerBackoffice(String id) {
     requireBackofficeRole();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow();
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
     return toDetalleDto(t);
   }
 
@@ -196,12 +183,12 @@ public class TicketsService {
   public void anadirMensajeBackoffice(String ticketId, MensajeEnviarRequest req) {
     requireBackofficeRole();
 
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     TicketMensaje m = new TicketMensaje();
     m.setTicket(t);
     m.setRemitenteTipo(TipoRemitente.USUARIO);
-    m.setRemitenteNombre(nombreActorBackoffice());
+    m.setRemitenteNombre(auth().displayName());
     m.setContenido(req.contenido());
     msgRepo.save(m);
 
@@ -212,7 +199,7 @@ public class TicketsService {
   public TicketFotoDto subirFotoBackoffice(String ticketId, MultipartFile file) throws IOException {
     requireBackofficeRole();
 
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
     return guardarFotoTicket(t, file);
   }
 
@@ -220,7 +207,7 @@ public class TicketsService {
   public TicketCrearOtResponse crearOtDesdeTicketBackoffice(String ticketId) {
     requireBackofficeRole();
 
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow();
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     UUID otExistenteId = t.getOrdenTrabajoId();
     if (otExistenteId != null) {
@@ -243,16 +230,12 @@ public class TicketsService {
     TicketMensaje m = new TicketMensaje();
     m.setTicket(t);
     m.setRemitenteTipo(TipoRemitente.USUARIO);
-    m.setRemitenteNombre(nombreActorBackoffice());
+    m.setRemitenteNombre(auth().displayName());
     m.setContenido("Se creó una OT desde este ticket: " + creada.codigo());
     msgRepo.save(m);
 
     return new TicketCrearOtResponse(t.getId(), creada.id(), creada.codigo());
   }
-
-  // =========================
-  // Mapeo DTO
-  // =========================
 
   private TicketDetalleDto toDetalleDto(TicketSolicitud t) {
     List<MensajeDto> mensajes = msgRepo.findByTicket_IdOrderByCreatedAtAsc(t.getId()).stream()
@@ -283,50 +266,25 @@ public class TicketsService {
         t.getCreatedAt(),
         t.getUpdatedAt(),
         t.getOrdenTrabajoId(),
-
         t.getClienteNombreSnapshot(),
         t.getClienteTelefonoSnapshot(),
         t.getClienteEmailSnapshot(),
-
         t.getEquipo(),
         t.getDescripcionFalla(),
         t.getTipoServicioSugerido(),
         t.getDireccion(),
         t.getObservaciones(),
-
         fotos
     );
   }
 
-  // =========================
-  // Fotos ticket
-  // =========================
-
   private TicketFotoDto guardarFotoTicket(TicketSolicitud ticket, MultipartFile file) throws IOException {
-    if (file == null || file.isEmpty()) {
-      throw new RuntimeException("Archivo vacío");
-    }
-
-    String contentType = file.getContentType();
-    if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
-      throw new RuntimeException("Solo se permiten imágenes");
-    }
-
-    Path baseDir = Paths.get(uploadDir).resolve("tickets").resolve(ticket.getId().toString());
-    Files.createDirectories(baseDir);
-
-    String original = safeName(file.getOriginalFilename());
-    String filename = UUID.randomUUID() + "-" + original;
-
-    Path path = baseDir.resolve(filename);
-    Files.write(path, file.getBytes(), StandardOpenOption.CREATE_NEW);
-
-    String url = "/files/tickets/" + ticket.getId() + "/" + filename;
+    var stored = secureUploadService.storeTicketImage(ticket.getId(), file);
 
     TicketFoto foto = new TicketFoto();
     foto.setTicket(ticket);
-    foto.setUrl(url);
-    foto.setNombreOriginal(file.getOriginalFilename());
+    foto.setUrl(stored.url());
+    foto.setNombreOriginal(stored.originalFilename());
     foto = fotoRepo.save(foto);
 
     ticketRepo.save(ticket);
@@ -334,45 +292,23 @@ public class TicketsService {
     return new TicketFotoDto(foto.getId(), foto.getUrl(), foto.getNombreOriginal(), foto.getCreatedAt());
   }
 
-  // =========================
-  // Seguridad
-  // =========================
-
-  private UUID clienteId() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth instanceof JwtAuthenticationToken jwtAuth) {
-      String rol = String.valueOf(jwtAuth.getToken().getClaims().get("rol"));
-      if (!"CLIENTE".equalsIgnoreCase(rol)) throw new RuntimeException("No autorizado");
-      return UUID.fromString(jwtAuth.getToken().getSubject());
+  private UUID requireClienteId() {
+    var user = auth();
+    if (!user.isCliente()) {
+      throw new SecurityException("No autorizado");
     }
-    throw new RuntimeException("No autenticado");
+    return user.id();
   }
 
   private void requireBackofficeRole() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth instanceof JwtAuthenticationToken jwtAuth) {
-      String rol = String.valueOf(jwtAuth.getToken().getClaims().get("rol"));
-      if (!"ADMIN".equalsIgnoreCase(rol) && !"TECNICO".equalsIgnoreCase(rol)) {
-        throw new RuntimeException("No autorizado");
-      }
-      return;
+    if (!auth().isBackoffice()) {
+      throw new SecurityException("No autorizado");
     }
-    throw new RuntimeException("No autenticado");
   }
 
-  private String nombreActorBackoffice() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth instanceof JwtAuthenticationToken jwtAuth) {
-      Object n = jwtAuth.getToken().getClaims().get("nombre");
-      if (n != null) return String.valueOf(n);
-      return "Backoffice";
-    }
-    return "Backoffice";
+  private AuthContextService.AuthUser auth() {
+    return authContextService.current();
   }
-
-  // =========================
-  // Helpers dominio/texto
-  // =========================
 
   private String construirDescripcionTicket(
       String descripcionLegacy,
@@ -441,10 +377,5 @@ public class TicketsService {
 
   private String coalesce(String a, String b) {
     return (a != null && !a.isBlank()) ? a : b;
-  }
-
-  private String safeName(String n) {
-    if (n == null || n.isBlank()) return "imagen.jpg";
-    return n.replaceAll("[^a-zA-Z0-9._-]", "_");
   }
 }

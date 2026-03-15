@@ -7,6 +7,7 @@ import java.util.Optional;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.reparasuite.api.model.ActorTipo;
@@ -39,6 +40,7 @@ import com.reparasuite.api.repo.TallerRepo;
 import com.reparasuite.api.repo.UsuarioRepo;
 
 @Configuration
+@Profile("dev")
 public class DataSeeder {
 
   @Bean

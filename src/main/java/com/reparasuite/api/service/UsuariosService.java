@@ -7,7 +7,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.reparasuite.api.dto.*;
+import com.reparasuite.api.dto.UsuarioCrearRequest;
+import com.reparasuite.api.dto.UsuarioResumenDto;
+import com.reparasuite.api.dto.UsuarioUpdateRequest;
+import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.RolUsuario;
 import com.reparasuite.api.model.Usuario;
 import com.reparasuite.api.repo.UsuarioRepo;
@@ -31,7 +34,8 @@ public class UsuariosService {
   }
 
   public UsuarioResumenDto obtener(UUID id) {
-    return toDto(usuarioRepo.findById(id).orElseThrow());
+    return toDto(usuarioRepo.findById(id)
+        .orElseThrow(() -> new NotFoundException("Usuario no encontrado")));
   }
 
   @Transactional
@@ -40,7 +44,7 @@ public class UsuariosService {
     u.setNombre(req.nombre());
     u.setUsuario(req.usuario());
     u.setEmail(req.email());
-    u.setRol(RolUsuario.valueOf(req.rol()));
+    u.setRol(RolUsuario.valueOf(req.rol().trim().toUpperCase()));
     u.setActivo(true);
     u.setPasswordHash(encoder.encode(req.password()));
     u = usuarioRepo.save(u);
@@ -49,25 +53,31 @@ public class UsuariosService {
 
   @Transactional
   public UsuarioResumenDto actualizar(UUID id, UsuarioUpdateRequest req) {
-    Usuario u = usuarioRepo.findById(id).orElseThrow();
+    Usuario u = usuarioRepo.findById(id)
+        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+
     u.setNombre(req.nombre());
     u.setUsuario(req.usuario());
     u.setEmail(req.email());
-    u.setRol(RolUsuario.valueOf(req.rol()));
+    u.setRol(RolUsuario.valueOf(req.rol().trim().toUpperCase()));
     u = usuarioRepo.save(u);
     return toDto(u);
   }
 
   @Transactional
   public void cambiarEstado(UUID id, boolean activo) {
-    Usuario u = usuarioRepo.findById(id).orElseThrow();
+    Usuario u = usuarioRepo.findById(id)
+        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
     u.setActivo(activo);
     usuarioRepo.save(u);
   }
 
   @Transactional
   public void eliminar(UUID id) {
-    usuarioRepo.deleteById(id); // ✅ delete físico
+    if (!usuarioRepo.existsById(id)) {
+      throw new NotFoundException("Usuario no encontrado");
+    }
+    usuarioRepo.deleteById(id);
   }
 
   private UsuarioResumenDto toDto(Usuario u) {

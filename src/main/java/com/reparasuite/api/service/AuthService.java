@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import com.reparasuite.api.dto.LoginResponse;
 import com.reparasuite.api.dto.UsuarioResumenDto;
+import com.reparasuite.api.exception.UnauthorizedException;
 import com.reparasuite.api.model.Usuario;
 import com.reparasuite.api.repo.UsuarioRepo;
 
@@ -39,10 +40,10 @@ public class AuthService {
   public LoginResponse login(String usuario, String password) {
     Usuario u = usuarioRepo.findByUsuario(usuario)
         .filter(Usuario::isActivo)
-        .orElseThrow(() -> new RuntimeException("Credenciales inválidas"));
+        .orElseThrow(() -> new UnauthorizedException("Credenciales inválidas"));
 
     if (!passwordEncoder.matches(password, u.getPasswordHash())) {
-      throw new RuntimeException("Credenciales inválidas");
+      throw new UnauthorizedException("Credenciales inválidas");
     }
 
     Instant now = Instant.now();
@@ -56,7 +57,7 @@ public class AuthService {
         .issuedAt(Date.from(now))
         .expiration(Date.from(exp))
         .claim("usuario", u.getUsuario())
-        .claim("nombre", u.getNombre()) // ✅ recomendado
+        .claim("nombre", u.getNombre())
         .claim("rol", u.getRol().name())
         .signWith(key, Jwts.SIG.HS256)
         .compact();

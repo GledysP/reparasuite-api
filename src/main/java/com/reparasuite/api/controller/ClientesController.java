@@ -3,6 +3,7 @@ package com.reparasuite.api.controller;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import com.reparasuite.api.dto.ApiListaResponse;
@@ -12,6 +13,7 @@ import com.reparasuite.api.service.ClientesService;
 
 @RestController
 @RequestMapping("/api/v1/clientes")
+@PreAuthorize("hasAnyRole('ADMIN','TECNICO')")
 public class ClientesController {
 
   private final ClientesService service;

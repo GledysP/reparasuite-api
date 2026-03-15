@@ -10,6 +10,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.reparasuite.api.exception.BadRequestException;
+import com.reparasuite.api.exception.ConflictException;
+import com.reparasuite.api.exception.UnauthorizedException;
 import com.reparasuite.api.model.Cliente;
 import com.reparasuite.api.repo.ClienteRepo;
 
@@ -41,10 +44,10 @@ public class PortalAuthService {
 
     Cliente c = clienteRepo.findByEmailIgnoreCase(emailNorm)
         .filter(Cliente::isPortalActivo)
-        .orElseThrow(() -> new RuntimeException("Credenciales inválidas"));
+        .orElseThrow(() -> new UnauthorizedException("Credenciales inválidas"));
 
     if (c.getPasswordHashPortal() == null || !encoder.matches(password, c.getPasswordHashPortal())) {
-      throw new RuntimeException("Credenciales inválidas");
+      throw new UnauthorizedException("Credenciales inválidas");
     }
 
     Instant now = Instant.now();
@@ -70,15 +73,15 @@ public class PortalAuthService {
     String passwordNorm = password == null ? null : password.trim();
 
     if (nombreNorm == null || nombreNorm.length() < 2) {
-      throw new RuntimeException("El nombre es inválido");
+      throw new BadRequestException("El nombre es inválido");
     }
 
     if (emailNorm == null) {
-      throw new RuntimeException("El email es inválido");
+      throw new BadRequestException("El email es inválido");
     }
 
     if (passwordNorm == null || passwordNorm.length() < 6) {
-      throw new RuntimeException("La contraseña debe tener al menos 6 caracteres");
+      throw new BadRequestException("La contraseña debe tener al menos 6 caracteres");
     }
 
     Cliente cliente = clienteRepo.findByEmailIgnoreCase(emailNorm).orElse(null);
@@ -94,8 +97,10 @@ public class PortalAuthService {
       return;
     }
 
-    if (cliente.isPortalActivo() && cliente.getPasswordHashPortal() != null && !cliente.getPasswordHashPortal().isBlank()) {
-      throw new RuntimeException("Ya existe una cuenta activa con ese email");
+    if (cliente.isPortalActivo()
+        && cliente.getPasswordHashPortal() != null
+        && !cliente.getPasswordHashPortal().isBlank()) {
+      throw new ConflictException("Ya existe una cuenta activa con ese email");
     }
 
     if (cliente.getNombre() == null || cliente.getNombre().isBlank()) {
