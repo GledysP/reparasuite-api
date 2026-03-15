@@ -37,6 +37,7 @@ public interface OrdenTrabajoRepo extends JpaRepository<OrdenTrabajo, UUID> {
       FROM OrdenTrabajo ot
       JOIN ot.cliente c
       LEFT JOIN ot.tecnico t
+      LEFT JOIN ot.categoriaEquipo ce
       WHERE (
           :query IS NULL OR :query = ''
           OR LOWER(ot.codigo) LIKE LOWER(CONCAT('%', :query, '%'))
@@ -44,6 +45,8 @@ public interface OrdenTrabajoRepo extends JpaRepository<OrdenTrabajo, UUID> {
           OR LOWER(COALESCE(c.telefono, '')) LIKE LOWER(CONCAT('%', :query, '%'))
           OR LOWER(COALESCE(c.email, '')) LIKE LOWER(CONCAT('%', :query, '%'))
           OR LOWER(COALESCE(ot.equipo, '')) LIKE LOWER(CONCAT('%', :query, '%'))
+          OR LOWER(COALESCE(ot.fallaReportada, '')) LIKE LOWER(CONCAT('%', :query, '%'))
+          OR LOWER(COALESCE(ce.nombre, '')) LIKE LOWER(CONCAT('%', :query, '%'))
       )
       AND (:estado IS NULL OR ot.estado = :estado)
       AND (:tipo IS NULL OR ot.tipo = :tipo)

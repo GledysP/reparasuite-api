@@ -12,13 +12,17 @@ public record OtDetalleDto(
     String prioridad,
 
     String equipo,
-
     UUID equipoId,
     UUID categoriaEquipoId,
     String categoriaEquipoNombre,
     String fallaReportada,
 
     String descripcion,
+
+    String fallaDetectada,
+    String diagnosticoTecnico,
+    String trabajoARealizar,
+
     ClienteResumenDto cliente,
     UsuarioResumenDto tecnico,
     OffsetDateTime fechaPrevista,
@@ -33,4 +37,4 @@ public record OtDetalleDto(
     List<MensajeDto> mensajes,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
-) {}
+) { }

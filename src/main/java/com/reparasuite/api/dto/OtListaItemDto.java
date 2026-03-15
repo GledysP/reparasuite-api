@@ -11,7 +11,6 @@ public record OtListaItemDto(
     String prioridad,
 
     String equipo,
-
     UUID equipoId,
     UUID categoriaEquipoId,
     String categoriaEquipoNombre,
@@ -20,4 +19,4 @@ public record OtListaItemDto(
     String clienteNombre,
     String tecnicoNombre,
     OffsetDateTime updatedAt
-) {}
+) { }

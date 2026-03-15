@@ -6,14 +6,22 @@ import java.util.UUID;
 import jakarta.persistence.*;
 
 @Entity
-@Table(name = "orden_trabajo")
+@Table(
+    name = "orden_trabajo",
+    indexes = {
+        @Index(name = "idx_ot_cliente", columnList = "cliente_id"),
+        @Index(name = "idx_ot_tecnico", columnList = "tecnico_id"),
+        @Index(name = "idx_ot_equipo", columnList = "equipo_id"),
+        @Index(name = "idx_ot_categoria_equipo", columnList = "categoria_equipo_id")
+    }
+)
 public class OrdenTrabajo {
 
   @Id
   @Column(columnDefinition = "uuid")
   private UUID id;
 
-  @Column(nullable = false, unique = true, columnDefinition = "TEXT")
+  @Column(nullable = false, unique = true, length = 50)
   private String codigo;
 
   @Enumerated(EnumType.STRING)
@@ -28,9 +36,9 @@ public class OrdenTrabajo {
   @Column(nullable = false)
   private PrioridadOt prioridad;
 
-  @Column(length = 255, columnDefinition = "TEXT")
+  @Column(length = 255)
   private String equipo;
-  
+
   @ManyToOne
   @JoinColumn(name = "equipo_id")
   private Equipo equipoRegistrado;
@@ -39,22 +47,33 @@ public class OrdenTrabajo {
   @JoinColumn(name = "categoria_equipo_id")
   private CategoriaEquipo categoriaEquipo;
 
-  @Column(name = "falla_reportada", length = 4000)
+  @Column(name = "falla_reportada", length = 1000)
   private String fallaReportada;
 
-  @Column(nullable = false, length = 4000, columnDefinition = "TEXT")
+  @Column(nullable = false, length = 4000)
   private String descripcion;
 
+  @Column(name = "falla_detectada", length = 1000)
+  private String fallaDetectada;
+
+  @Column(name = "diagnostico_tecnico", length = 4000)
+  private String diagnosticoTecnico;
+
+  @Column(name = "trabajo_a_realizar", length = 4000)
+  private String trabajoARealizar;
+
   @ManyToOne(optional = false)
-  @JoinColumn(name = "cliente_id")
+  @JoinColumn(name = "cliente_id", nullable = false)
   private Cliente cliente;
 
   @ManyToOne
   @JoinColumn(name = "tecnico_id")
   private Usuario tecnico;
 
+  @Column(name = "fecha_prevista")
   private OffsetDateTime fechaPrevista;
 
+  @Column(length = 1000)
   private String direccion;
 
   @Column(name = "notas_acceso", length = 2000)
@@ -88,7 +107,10 @@ public class OrdenTrabajo {
   public Equipo getEquipoRegistrado() { return equipoRegistrado; }
   public CategoriaEquipo getCategoriaEquipo() { return categoriaEquipo; }
   public String getFallaReportada() { return fallaReportada; }
-  public String getDescripcion() { return descripcion; } 
+  public String getDescripcion() { return descripcion; }
+  public String getFallaDetectada() { return fallaDetectada; }
+  public String getDiagnosticoTecnico() { return diagnosticoTecnico; }
+  public String getTrabajoARealizar() { return trabajoARealizar; }
   public Cliente getCliente() { return cliente; }
   public Usuario getTecnico() { return tecnico; }
   public OffsetDateTime getFechaPrevista() { return fechaPrevista; }
@@ -106,6 +128,9 @@ public class OrdenTrabajo {
   public void setCategoriaEquipo(CategoriaEquipo categoriaEquipo) { this.categoriaEquipo = categoriaEquipo; }
   public void setFallaReportada(String fallaReportada) { this.fallaReportada = fallaReportada; }
   public void setDescripcion(String descripcion) { this.descripcion = descripcion; }
+  public void setFallaDetectada(String fallaDetectada) { this.fallaDetectada = fallaDetectada; }
+  public void setDiagnosticoTecnico(String diagnosticoTecnico) { this.diagnosticoTecnico = diagnosticoTecnico; }
+  public void setTrabajoARealizar(String trabajoARealizar) { this.trabajoARealizar = trabajoARealizar; }
   public void setCliente(Cliente cliente) { this.cliente = cliente; }
   public void setTecnico(Usuario tecnico) { this.tecnico = tecnico; }
   public void setFechaPrevista(OffsetDateTime fechaPrevista) { this.fechaPrevista = fechaPrevista; }

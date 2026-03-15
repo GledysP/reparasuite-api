@@ -24,6 +24,7 @@ import com.reparasuite.api.dto.PresupuestoAceptarRequest;
 import com.reparasuite.api.dto.PresupuestoDto;
 import com.reparasuite.api.dto.PresupuestoGuardarRequest;
 import com.reparasuite.api.service.OrdenesTrabajoService;
+import com.reparasuite.api.dto.OtRevisionTecnicaRequest;
 
 @RestController
 @RequestMapping("/api/v1/ordenes-trabajo")
@@ -162,5 +163,12 @@ public class OrdenesTrabajoController {
       @Validated @RequestBody MensajeEnviarRequest req
   ) {
     return ResponseEntity.ok(service.enviarMensaje(id, req.contenido()));
+  }
+  @PatchMapping("/{id}/revision-tecnica")
+  public ResponseEntity<OtDetalleDto> actualizarRevisionTecnica(
+      @PathVariable String id,
+      @RequestBody OtRevisionTecnicaRequest req
+  ) {
+    return ResponseEntity.ok(service.actualizarRevisionTecnica(id, req));
   }
 }

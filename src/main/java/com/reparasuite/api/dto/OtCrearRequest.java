@@ -10,7 +10,6 @@ public record OtCrearRequest(
     @NotNull String prioridad,
 
     String equipo,
-
     String equipoId,
     String categoriaEquipoId,
     String fallaReportada,

@@ -33,6 +33,7 @@ import com.reparasuite.api.dto.NotaDto;
 import com.reparasuite.api.dto.OtCrearRequest;
 import com.reparasuite.api.dto.OtDetalleDto;
 import com.reparasuite.api.dto.OtListaItemDto;
+import com.reparasuite.api.dto.OtRevisionTecnicaRequest;
 import com.reparasuite.api.dto.PagoDto;
 import com.reparasuite.api.dto.PresupuestoDto;
 import com.reparasuite.api.dto.PresupuestoGuardarRequest;
@@ -94,7 +95,6 @@ public class OrdenesTrabajoService {
   private final MensajeOtRepo mensajeRepo;
   private final TicketSolicitudRepo ticketRepo;
   private final TicketMensajeRepo ticketMensajeRepo;
-
   private final EquipoRepo equipoRepo;
   private final CategoriaEquipoRepo categoriaEquipoRepo;
 
@@ -266,22 +266,25 @@ public class OrdenesTrabajoService {
       );
     }
 
-    UUID equipoId = ot.getEquipoRegistrado() != null ? ot.getEquipoRegistrado().getId() : null;
-    UUID categoriaEquipoId = ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getId() : null;
-    String categoriaEquipoNombre = ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getNombre() : null;
-
     return new OtDetalleDto(
         ot.getId(),
         ot.getCodigo(),
         ot.getEstado().name(),
         ot.getTipo().name(),
         ot.getPrioridad().name(),
+
         ot.getEquipo(),
-        equipoId,
-        categoriaEquipoId,
-        categoriaEquipoNombre,
+        ot.getEquipoRegistrado() != null ? ot.getEquipoRegistrado().getId() : null,
+        ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getId() : null,
+        ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getNombre() : null,
         ot.getFallaReportada(),
+
         ot.getDescripcion(),
+
+        ot.getFallaDetectada(),
+        ot.getDiagnosticoTecnico(),
+        ot.getTrabajoARealizar(),
+
         clienteDto,
         tecnicoDto,
         ot.getFechaPrevista(),
@@ -335,26 +338,26 @@ public class OrdenesTrabajoService {
       cliente = clienteRepo.save(cliente);
     }
 
+    Usuario tecnico = null;
+    if (req.tecnicoId() != null && !req.tecnicoId().isBlank()) {
+      tecnico = usuarioRepo.findById(UUID.fromString(req.tecnicoId()))
+          .orElseThrow(() -> new RuntimeException("Técnico no encontrado"));
+    }
+
     Equipo equipoRegistrado = null;
     if (req.equipoId() != null && !req.equipoId().isBlank()) {
       equipoRegistrado = equipoRepo.findById(UUID.fromString(req.equipoId()))
           .orElseThrow(() -> new RuntimeException("Equipo no encontrado"));
 
-      cliente = equipoRegistrado.getCliente();
+      if (!equipoRegistrado.getCliente().getId().equals(cliente.getId())) {
+        throw new RuntimeException("El equipo seleccionado no pertenece al cliente");
+      }
     }
 
     CategoriaEquipo categoriaEquipo = null;
     if (req.categoriaEquipoId() != null && !req.categoriaEquipoId().isBlank()) {
       categoriaEquipo = categoriaEquipoRepo.findById(UUID.fromString(req.categoriaEquipoId()))
           .orElseThrow(() -> new RuntimeException("Categoría de equipo no encontrada"));
-    } else if (equipoRegistrado != null && equipoRegistrado.getCategoriaEquipo() != null) {
-      categoriaEquipo = equipoRegistrado.getCategoriaEquipo();
-    }
-
-    Usuario tecnico = null;
-    if (req.tecnicoId() != null && !req.tecnicoId().isBlank()) {
-      tecnico = usuarioRepo.findById(UUID.fromString(req.tecnicoId()))
-          .orElseThrow(() -> new RuntimeException("Técnico no encontrado"));
     }
 
     Taller t = tallerRepo.findById(1L)
@@ -365,18 +368,13 @@ public class OrdenesTrabajoService {
     TipoOt tipo = parseEnumRequired(TipoOt.class, req.tipo(), "tipo");
     PrioridadOt prioridad = parseEnumRequired(PrioridadOt.class, req.prioridad(), "prioridad");
 
-    String equipoTexto = limpiarNullable(req.equipo());
-    if (equipoTexto == null && equipoRegistrado != null) {
-      equipoTexto = buildEquipoTextoDesdeRegistro(equipoRegistrado);
-    }
-
     OrdenTrabajo ot = new OrdenTrabajo();
     ot.setCodigo(codigo);
     ot.setCliente(cliente);
     ot.setTecnico(tecnico);
     ot.setTipo(tipo);
     ot.setPrioridad(prioridad);
-    ot.setEquipo(equipoTexto);
+    ot.setEquipo(limpiarNullable(req.equipo()));
     ot.setEquipoRegistrado(equipoRegistrado);
     ot.setCategoriaEquipo(categoriaEquipo);
     ot.setFallaReportada(limpiarNullable(req.fallaReportada()));
@@ -387,8 +385,8 @@ public class OrdenesTrabajoService {
       ot.setFechaPrevista(OffsetDateTime.parse(req.fechaPrevista()));
     }
 
-    ot.setDireccion(req.direccion());
-    ot.setNotasAcceso(req.notasAcceso());
+    ot.setDireccion(limpiarNullable(req.direccion()));
+    ot.setNotasAcceso(limpiarNullable(req.notasAcceso()));
 
     ot = otRepo.save(ot);
 
@@ -418,6 +416,25 @@ public class OrdenesTrabajoService {
     registrarEvento(ot, EventoHistorialOt.OT_CREADA, desc);
 
     return new CrearResponse(ot.getId());
+  }
+
+  @Transactional
+  public OtDetalleDto actualizarRevisionTecnica(String idOrCodigo, OtRevisionTecnicaRequest req) {
+    if (!ctx().rolBackoffice()) {
+      throw new SecurityException("No autorizado");
+    }
+
+    OrdenTrabajo ot = resolverOt(idOrCodigo);
+
+    ot.setFallaDetectada(limpiarNullable(req.fallaDetectada()));
+    ot.setDiagnosticoTecnico(limpiarNullable(req.diagnosticoTecnico()));
+    ot.setTrabajoARealizar(limpiarNullable(req.trabajoARealizar()));
+
+    otRepo.save(ot);
+
+    registrarEvento(ot, EventoHistorialOt.NOTA_AGREGADA, "Se actualizó la revisión técnica");
+
+    return obtener(idOrCodigo);
   }
 
   @Transactional
@@ -861,8 +878,6 @@ public class OrdenesTrabajoService {
     ot.setTipo(tipo);
     ot.setPrioridad(prioridad);
     ot.setEquipo(equipo);
-    ot.setEquipoRegistrado(null);
-    ot.setCategoriaEquipo(null);
     ot.setFallaReportada(falla);
     ot.setDescripcion(descripcionLimpia);
     ot.setEstado(EstadoOt.RECIBIDA);
@@ -981,55 +996,23 @@ public class OrdenesTrabajoService {
   }
 
   private OtListaItemDto toListaItem(OrdenTrabajo ot) {
-    UUID equipoId = ot.getEquipoRegistrado() != null ? ot.getEquipoRegistrado().getId() : null;
-    UUID categoriaEquipoId = ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getId() : null;
-    String categoriaEquipoNombre = ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getNombre() : null;
-
     return new OtListaItemDto(
         ot.getId(),
         ot.getCodigo(),
         ot.getEstado().name(),
         ot.getTipo().name(),
         ot.getPrioridad().name(),
+
         ot.getEquipo(),
-        equipoId,
-        categoriaEquipoId,
-        categoriaEquipoNombre,
+        ot.getEquipoRegistrado() != null ? ot.getEquipoRegistrado().getId() : null,
+        ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getId() : null,
+        ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getNombre() : null,
         ot.getFallaReportada(),
+
         ot.getCliente().getNombre(),
         ot.getTecnico() != null ? ot.getTecnico().getNombre() : null,
         ot.getUpdatedAt()
     );
-  }
-
-  private String buildEquipoTextoDesdeRegistro(Equipo equipo) {
-    if (equipo == null) return null;
-
-    StringBuilder sb = new StringBuilder();
-
-    if (equipo.getTipoEquipo() != null && !equipo.getTipoEquipo().isBlank()) {
-      sb.append(equipo.getTipoEquipo().trim());
-    }
-
-    if (equipo.getMarca() != null && !equipo.getMarca().isBlank()) {
-      if (sb.length() > 0) sb.append(" ");
-      sb.append(equipo.getMarca().trim());
-    }
-
-    if (equipo.getModelo() != null && !equipo.getModelo().isBlank()) {
-      if (sb.length() > 0) sb.append(" ");
-      sb.append(equipo.getModelo().trim());
-    }
-
-    if (sb.length() == 0 && equipo.getCategoriaEquipo() != null && equipo.getCategoriaEquipo().getNombre() != null) {
-      sb.append(equipo.getCategoriaEquipo().getNombre().trim());
-    }
-
-    if (sb.length() == 0) {
-      sb.append(equipo.getCodigoEquipo());
-    }
-
-    return sb.toString().trim();
   }
 
   private String normalizarEmail(String email) {
