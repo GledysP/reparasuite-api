@@ -1,168 +1,135 @@
 package com.reparasuite.api.controller;
 
-import java.net.MalformedURLException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.UUID;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.UrlResource;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.reparasuite.api.exception.ForbiddenException;
+import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.OrdenTrabajo;
 import com.reparasuite.api.model.TicketSolicitud;
-import com.reparasuite.api.repo.FotoOtRepo;
-import com.reparasuite.api.repo.PagoOtRepo;
-import com.reparasuite.api.repo.TicketFotoRepo;
-
-import jakarta.servlet.http.HttpServletRequest;
+import com.reparasuite.api.repo.OrdenTrabajoRepo;
+import com.reparasuite.api.repo.TicketSolicitudRepo;
+import com.reparasuite.api.service.AuthContextService;
+import com.reparasuite.api.service.SecureUploadService;
 
 @RestController
 public class ArchivoController {
 
-  private final FotoOtRepo fotoOtRepo;
-  private final TicketFotoRepo ticketFotoRepo;
-  private final PagoOtRepo pagoOtRepo;
-
-  @Value("${reparasuite.upload-dir}")
-  private String uploadDir;
+  private final SecureUploadService secureUploadService;
+  private final OrdenTrabajoRepo ordenTrabajoRepo;
+  private final TicketSolicitudRepo ticketSolicitudRepo;
+  private final AuthContextService authContextService;
 
   public ArchivoController(
-      FotoOtRepo fotoOtRepo,
-      TicketFotoRepo ticketFotoRepo,
-      PagoOtRepo pagoOtRepo
+      SecureUploadService secureUploadService,
+      OrdenTrabajoRepo ordenTrabajoRepo,
+      TicketSolicitudRepo ticketSolicitudRepo,
+      AuthContextService authContextService
   ) {
-    this.fotoOtRepo = fotoOtRepo;
-    this.ticketFotoRepo = ticketFotoRepo;
-    this.pagoOtRepo = pagoOtRepo;
+    this.secureUploadService = secureUploadService;
+    this.ordenTrabajoRepo = ordenTrabajoRepo;
+    this.ticketSolicitudRepo = ticketSolicitudRepo;
+    this.authContextService = authContextService;
   }
 
-  @GetMapping("/files/**")
-  @PreAuthorize("hasAnyRole('ADMIN','TECNICO','CLIENTE')")
-  public ResponseEntity<Resource> descargar(
-      HttpServletRequest request,
-      JwtAuthenticationToken auth
-  ) throws Exception {
+  @GetMapping("/api/v1/archivos/ot/{otId}/{filename:.+}")
+  public ResponseEntity<Resource> descargarOtImagen(
+      @PathVariable UUID otId,
+      @PathVariable String filename
+  ) {
+    OrdenTrabajo ot = requireAuthorizedOt(otId);
 
-    String relativePath = extractRelativePath(request);
-    if (relativePath == null || relativePath.isBlank()) {
-      throw new IllegalArgumentException("Ruta de archivo inválida");
-    }
-
-    String url = "/files/" + relativePath.replace("\\", "/");
-
-    authorizeAccess(url, auth);
-
-    Path basePath = Paths.get(uploadDir).toAbsolutePath().normalize();
-    Path resolved = basePath.resolve(relativePath).normalize();
-
-    if (!resolved.startsWith(basePath)) {
-      throw new SecurityException("Ruta de archivo no permitida");
-    }
-
-    if (!Files.exists(resolved) || !Files.isRegularFile(resolved)) {
-      throw new RuntimeException("Archivo no encontrado");
-    }
-
-    Resource resource = toResource(resolved);
-    String contentType = Files.probeContentType(resolved);
-    if (contentType == null || contentType.isBlank()) {
-      contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
-    }
+    Resource resource = secureUploadService.loadOtImage(ot.getId(), filename);
+    String contentType = secureUploadService.probeContentType(resource, filename);
 
     return ResponseEntity.ok()
         .contentType(MediaType.parseMediaType(contentType))
+        .header(
+            HttpHeaders.CONTENT_DISPOSITION,
+            ContentDisposition.inline().filename(filename).build().toString()
+        )
         .body(resource);
   }
 
-  private void authorizeAccess(String url, JwtAuthenticationToken auth) {
-    var fotoOt = fotoOtRepo.findByUrl(url).orElse(null);
-    if (fotoOt != null) {
-      authorizeOt(fotoOt.getOt(), auth);
-      return;
-    }
+  @GetMapping("/api/v1/archivos/pagos/{otId}/{filename:.+}")
+  public ResponseEntity<Resource> descargarPagoComprobante(
+      @PathVariable UUID otId,
+      @PathVariable String filename
+  ) {
+    OrdenTrabajo ot = requireAuthorizedOt(otId);
 
-    var ticketFoto = ticketFotoRepo.findByUrl(url).orElse(null);
-    if (ticketFoto != null) {
-      authorizeTicket(ticketFoto.getTicket(), auth);
-      return;
-    }
+    Resource resource = secureUploadService.loadPaymentReceipt(ot.getId(), filename);
+    String contentType = secureUploadService.probeContentType(resource, filename);
 
-    var pago = pagoOtRepo.findByComprobanteUrl(url).orElse(null);
-    if (pago != null) {
-      authorizeOt(pago.getOt(), auth);
-      return;
-    }
+    ContentDisposition disposition =
+        "application/pdf".equalsIgnoreCase(contentType)
+            ? ContentDisposition.attachment().filename(filename).build()
+            : ContentDisposition.inline().filename(filename).build();
 
-    throw new RuntimeException("Archivo no encontrado");
+    return ResponseEntity.ok()
+        .contentType(MediaType.parseMediaType(contentType))
+        .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+        .body(resource);
   }
 
-  private void authorizeOt(OrdenTrabajo ot, JwtAuthenticationToken auth) {
-    String rol = getRol(auth);
+  @GetMapping("/api/v1/archivos/tickets/{ticketId}/{filename:.+}")
+  public ResponseEntity<Resource> descargarTicketImagen(
+      @PathVariable UUID ticketId,
+      @PathVariable String filename
+  ) {
+    TicketSolicitud ticket = requireAuthorizedTicket(ticketId);
 
-    if (isBackoffice(rol)) {
-      return;
-    }
+    Resource resource = secureUploadService.loadTicketImage(ticket.getId(), filename);
+    String contentType = secureUploadService.probeContentType(resource, filename);
 
-    if ("CLIENTE".equalsIgnoreCase(rol)) {
-      UUID clienteId = UUID.fromString(auth.getToken().getSubject());
-      if (ot.getCliente() == null || !clienteId.equals(ot.getCliente().getId())) {
-        throw new SecurityException("No autorizado");
-      }
-      return;
-    }
-
-    throw new SecurityException("No autorizado");
+    return ResponseEntity.ok()
+        .contentType(MediaType.parseMediaType(contentType))
+        .header(
+            HttpHeaders.CONTENT_DISPOSITION,
+            ContentDisposition.inline().filename(filename).build().toString()
+        )
+        .body(resource);
   }
 
-  private void authorizeTicket(TicketSolicitud ticket, JwtAuthenticationToken auth) {
-    String rol = getRol(auth);
+  private OrdenTrabajo requireAuthorizedOt(UUID otId) {
+    OrdenTrabajo ot = ordenTrabajoRepo.findById(otId)
+        .orElseThrow(() -> new NotFoundException("Orden no encontrada"));
 
-    if (isBackoffice(rol)) {
-      return;
+    var auth = authContextService.current();
+
+    if (auth.isBackoffice()) {
+      return ot;
     }
 
-    if ("CLIENTE".equalsIgnoreCase(rol)) {
-      UUID clienteId = UUID.fromString(auth.getToken().getSubject());
-      if (ticket.getCliente() == null || !clienteId.equals(ticket.getCliente().getId())) {
-        throw new SecurityException("No autorizado");
-      }
-      return;
+    if (auth.isCliente() && ot.getCliente() != null && ot.getCliente().getId().equals(auth.id())) {
+      return ot;
     }
 
-    throw new SecurityException("No autorizado");
+    throw new ForbiddenException("No autorizado");
   }
 
-  private boolean isBackoffice(String rol) {
-    return "ADMIN".equalsIgnoreCase(rol) || "TECNICO".equalsIgnoreCase(rol);
-  }
+  private TicketSolicitud requireAuthorizedTicket(UUID ticketId) {
+    TicketSolicitud ticket = ticketSolicitudRepo.findById(ticketId)
+        .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
-  private String getRol(JwtAuthenticationToken auth) {
-    Object rol = auth.getToken().getClaims().get("rol");
-    return rol == null ? "" : String.valueOf(rol);
-  }
+    var auth = authContextService.current();
 
-  private String extractRelativePath(HttpServletRequest request) {
-    String uri = request.getRequestURI();
-    String prefix = request.getContextPath() + "/files/";
-    if (!uri.startsWith(prefix)) {
-      return null;
+    if (auth.isBackoffice()) {
+      return ticket;
     }
-    return uri.substring(prefix.length());
-  }
 
-  private Resource toResource(Path path) {
-    try {
-      return new UrlResource(path.toUri());
-    } catch (MalformedURLException e) {
-      throw new RuntimeException("Archivo no accesible");
+    if (auth.isCliente() && ticket.getCliente() != null && ticket.getCliente().getId().equals(auth.id())) {
+      return ticket;
     }
+
+    throw new ForbiddenException("No autorizado");
   }
 }

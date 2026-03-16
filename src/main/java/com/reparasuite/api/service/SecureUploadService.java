@@ -2,6 +2,7 @@ package com.reparasuite.api.service;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
@@ -10,189 +11,261 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+
+import com.reparasuite.api.exception.BadRequestException;
+import com.reparasuite.api.exception.NotFoundException;
 
 @Service
 public class SecureUploadService {
 
-  private static final long MAX_BYTES = 10L * 1024L * 1024L;
-
-  private static final Set<String> IMAGE_EXT = Set.of("jpg", "jpeg", "png", "webp");
-  private static final Set<String> RECEIPT_EXT = Set.of("jpg", "jpeg", "png", "webp", "pdf");
+  private static final Set<String> IMAGE_EXTENSIONS = Set.of("jpg", "jpeg", "png", "webp");
+  private static final Set<String> RECEIPT_EXTENSIONS = Set.of("jpg", "jpeg", "png", "pdf", "webp");
 
   @Value("${reparasuite.upload-dir}")
   private String uploadDir;
 
-  public StoredUpload storeOtImage(UUID otId, MultipartFile file) throws IOException {
-    ValidatedFile valid = validate(file, FileKind.IMAGE);
-    String filename = "ot-" + otId + "-" + UUID.randomUUID() + "-" + valid.safeOriginalName();
-    Path base = baseDir();
-    Files.createDirectories(base);
+  public record StoredFile(String url, String originalFilename, String storedFilename, String contentType) {}
 
-    Path target = base.resolve(filename).normalize();
-    ensureInside(base, target);
-
-    Files.write(target, valid.bytes(), StandardOpenOption.CREATE_NEW);
-    return new StoredUpload("/files/" + filename, valid.originalName(), valid.detectedMime());
+  public StoredFile storeOtImage(UUID otId, MultipartFile file) throws IOException {
+    return store(
+        "ot",
+        otId,
+        file,
+        IMAGE_EXTENSIONS,
+        Set.of("image/jpeg", "image/png", "image/webp"),
+        true
+    );
   }
 
-  public StoredUpload storePaymentReceipt(UUID otId, MultipartFile file) throws IOException {
-    ValidatedFile valid = validate(file, FileKind.RECEIPT);
-    String filename = "pago-" + otId + "-" + UUID.randomUUID() + "-" + valid.safeOriginalName();
-    Path base = baseDir();
-    Files.createDirectories(base);
-
-    Path target = base.resolve(filename).normalize();
-    ensureInside(base, target);
-
-    Files.write(target, valid.bytes(), StandardOpenOption.CREATE_NEW);
-    return new StoredUpload("/files/" + filename, valid.originalName(), valid.detectedMime());
+  public StoredFile storePaymentReceipt(UUID otId, MultipartFile file) throws IOException {
+    return store(
+        "pagos",
+        otId,
+        file,
+        RECEIPT_EXTENSIONS,
+        Set.of("image/jpeg", "image/png", "image/webp", "application/pdf"),
+        false
+    );
   }
 
-  public StoredUpload storeTicketImage(UUID ticketId, MultipartFile file) throws IOException {
-    ValidatedFile valid = validate(file, FileKind.IMAGE);
-    String filename = UUID.randomUUID() + "-" + valid.safeOriginalName();
+  public StoredFile storeTicketImage(UUID ticketId, MultipartFile file) throws IOException {
+    return store(
+        "tickets",
+        ticketId,
+        file,
+        IMAGE_EXTENSIONS,
+        Set.of("image/jpeg", "image/png", "image/webp"),
+        true
+    );
+  }
 
-    Path base = baseDir();
-    Path ticketDir = base.resolve("tickets").resolve(ticketId.toString()).normalize();
+  public Resource loadOtImage(UUID otId, String filename) {
+    return load("ot", otId, filename);
+  }
 
-    Files.createDirectories(ticketDir);
-    ensureInside(base, ticketDir);
+  public Resource loadPaymentReceipt(UUID otId, String filename) {
+    return load("pagos", otId, filename);
+  }
 
-    Path target = ticketDir.resolve(filename).normalize();
-    ensureInside(base, target);
-
-    Files.write(target, valid.bytes(), StandardOpenOption.CREATE_NEW);
-    return new StoredUpload("/files/tickets/" + ticketId + "/" + filename, valid.originalName(), valid.detectedMime());
+  public Resource loadTicketImage(UUID ticketId, String filename) {
+    return load("tickets", ticketId, filename);
   }
 
   public void deleteByUrl(String url) {
     if (url == null || url.isBlank()) return;
 
-    String normalized = url.trim();
-    if (!normalized.startsWith("/files/")) return;
-
-    String relative = normalized.substring("/files/".length());
-    if (relative.isBlank()) return;
-
-    Path base = baseDir();
-
     try {
-      Path target = base.resolve(relative).normalize();
-      ensureInside(base, target);
-      Files.deleteIfExists(target);
-      cleanupEmptyParents(base, target.getParent());
-    } catch (Exception ignored) {
-    }
-  }
+      String normalized = url.trim();
+      String marker = "/api/v1/archivos/";
+      int idx = normalized.indexOf(marker);
+      if (idx < 0) return;
 
-  private void cleanupEmptyParents(Path base, Path current) {
-    try {
-      while (current != null && current.startsWith(base) && !current.equals(base)) {
-        if (!Files.exists(current)) {
-          current = current.getParent();
-          continue;
-        }
+      String tail = normalized.substring(idx + marker.length()); // bucket/entityId/file
+      String[] segments = tail.split("/");
+      if (segments.length < 3) return;
 
-        try (var stream = Files.list(current)) {
-          if (stream.findAny().isPresent()) {
-            break;
-          }
-        }
+      String bucket = segments[0];
+      String entityId = segments[1];
+      String filename = tail.substring((bucket + "/" + entityId + "/").length());
 
-        Files.deleteIfExists(current);
-        current = current.getParent();
+      if (!Set.of("ot", "pagos", "tickets").contains(bucket)) {
+        return;
       }
+
+      UUID id = UUID.fromString(entityId);
+      Path file = buildPath(bucket, id, filename);
+      Files.deleteIfExists(file);
     } catch (Exception ignored) {
     }
   }
 
-  private Path baseDir() {
-    return Paths.get(uploadDir).toAbsolutePath().normalize();
-  }
-
-  private ValidatedFile validate(MultipartFile file, FileKind kind) throws IOException {
+  private StoredFile store(
+      String bucket,
+      UUID entityId,
+      MultipartFile file,
+      Set<String> allowedExtensions,
+      Set<String> allowedMimeTypes,
+      boolean onlyImages
+  ) throws IOException {
     if (file == null || file.isEmpty()) {
-      throw new IllegalArgumentException("Archivo vacío");
+      throw new BadRequestException("Archivo vacío");
+    }
+
+    String originalFilename = safeOriginalName(file.getOriginalFilename());
+    String extension = getExtension(originalFilename);
+
+    if (!allowedExtensions.contains(extension)) {
+      throw new BadRequestException("Extensión de archivo no permitida");
     }
 
     byte[] bytes = file.getBytes();
-    if (bytes.length == 0) {
-      throw new IllegalArgumentException("Archivo vacío");
+    String detectedMime = detectMimeType(bytes);
+
+    if (detectedMime == null) {
+      throw new BadRequestException("No se pudo determinar el tipo real del archivo");
     }
 
-    if (bytes.length > MAX_BYTES) {
-      throw new IllegalArgumentException("El archivo supera el tamaño máximo permitido");
+    if (onlyImages && !detectedMime.startsWith("image/")) {
+      throw new BadRequestException("Solo se permiten imágenes");
     }
 
-    String originalName = file.getOriginalFilename() == null ? "archivo" : file.getOriginalFilename().trim();
-    String ext = extensionOf(originalName);
-
-    Set<String> allowedExt = kind == FileKind.IMAGE ? IMAGE_EXT : RECEIPT_EXT;
-    if (!allowedExt.contains(ext)) {
-      throw new IllegalArgumentException("Extensión de archivo no permitida");
+    if (!allowedMimeTypes.contains(detectedMime)) {
+      throw new BadRequestException("Tipo de archivo no permitido");
     }
 
-    String mime = detectMime(bytes);
-    if (mime == null) {
-      throw new IllegalArgumentException("No se pudo validar el tipo real del archivo");
+    String storedFilename = UUID.randomUUID() + "." + extension;
+    Path dir = buildDirectory(bucket, entityId);
+    Files.createDirectories(dir);
+
+    Path target = dir.resolve(storedFilename).normalize();
+    if (!target.startsWith(dir)) {
+      throw new BadRequestException("Ruta de archivo inválida");
     }
 
-    if (kind == FileKind.IMAGE && !isAllowedImageMime(mime)) {
-      throw new IllegalArgumentException("Solo se permiten imágenes JPEG, PNG o WEBP");
-    }
+    Files.write(target, bytes, StandardOpenOption.CREATE_NEW);
 
-    if (kind == FileKind.RECEIPT && !isAllowedReceiptMime(mime)) {
-      throw new IllegalArgumentException("Solo se permiten PDF o imágenes JPEG, PNG o WEBP");
-    }
-
-    return new ValidatedFile(originalName, safeName(originalName), ext, mime, bytes);
+    String url = "/api/v1/archivos/" + bucket + "/" + entityId + "/" + storedFilename;
+    return new StoredFile(url, originalFilename, storedFilename, detectedMime);
   }
 
-  private void ensureInside(Path base, Path target) {
-    if (!target.startsWith(base)) {
-      throw new SecurityException("Ruta de archivo no permitida");
+  private Resource load(String bucket, UUID entityId, String filename) {
+    try {
+      Path file = buildPath(bucket, entityId, filename);
+      if (!Files.exists(file) || !Files.isRegularFile(file)) {
+        throw new NotFoundException("Archivo no encontrado");
+      }
+
+      Resource resource = new UrlResource(file.toUri());
+      if (!resource.exists() || !resource.isReadable()) {
+        throw new NotFoundException("Archivo no disponible");
+      }
+
+      return resource;
+    } catch (IOException ex) {
+      throw new NotFoundException("Archivo no encontrado");
     }
   }
 
-  private boolean isAllowedImageMime(String mime) {
-    return "image/jpeg".equals(mime)
-        || "image/png".equals(mime)
-        || "image/webp".equals(mime);
+  public String probeContentType(Resource resource, String fallbackFilename) {
+    try {
+      Path path = resource.getFile().toPath();
+      String type = Files.probeContentType(path);
+      if (type != null && !type.isBlank()) {
+        return type;
+      }
+    } catch (Exception ignored) {
+    }
+
+    String ext = getExtension(fallbackFilename);
+    return switch (ext) {
+      case "jpg", "jpeg" -> "image/jpeg";
+      case "png" -> "image/png";
+      case "webp" -> "image/webp";
+      case "pdf" -> "application/pdf";
+      default -> "application/octet-stream";
+    };
   }
 
-  private boolean isAllowedReceiptMime(String mime) {
-    return isAllowedImageMime(mime) || "application/pdf".equals(mime);
+  private Path buildDirectory(String bucket, UUID entityId) {
+    try {
+      return Paths.get(uploadDir).resolve(bucket).resolve(entityId.toString()).normalize();
+    } catch (InvalidPathException ex) {
+      throw new BadRequestException("Ruta de almacenamiento inválida");
+    }
   }
 
-  private String extensionOf(String name) {
-    int idx = name.lastIndexOf('.');
-    if (idx < 0 || idx == name.length() - 1) {
+  private Path buildPath(String bucket, UUID entityId, String filename) {
+    String safeFilename = sanitizeStoredFilename(filename);
+    Path dir = buildDirectory(bucket, entityId);
+    Path file = dir.resolve(safeFilename).normalize();
+
+    if (!file.startsWith(dir)) {
+      throw new BadRequestException("Ruta de archivo inválida");
+    }
+
+    return file;
+  }
+
+  private String safeOriginalName(String originalFilename) {
+    if (originalFilename == null || originalFilename.isBlank()) {
+      return "archivo.bin";
+    }
+
+    String sanitized = originalFilename
+        .replace("\\", "_")
+        .replace("/", "_")
+        .replaceAll("[^a-zA-Z0-9._-]", "_");
+
+    return sanitized.isBlank() ? "archivo.bin" : sanitized;
+  }
+
+  private String sanitizeStoredFilename(String filename) {
+    if (filename == null || filename.isBlank()) {
+      throw new BadRequestException("Nombre de archivo inválido");
+    }
+
+    String sanitized = filename
+        .replace("\\", "_")
+        .replace("/", "_")
+        .replaceAll("[^a-zA-Z0-9._-]", "_");
+
+    if (sanitized.isBlank()) {
+      throw new BadRequestException("Nombre de archivo inválido");
+    }
+
+    return sanitized;
+  }
+
+  private String getExtension(String filename) {
+    int idx = filename.lastIndexOf('.');
+    if (idx < 0 || idx == filename.length() - 1) {
       return "";
     }
-    return name.substring(idx + 1).toLowerCase(Locale.ROOT);
+    return filename.substring(idx + 1).toLowerCase(Locale.ROOT);
   }
 
-  private String safeName(String n) {
-    String cleaned = n == null || n.isBlank() ? "archivo.bin" : n;
-    return cleaned.replaceAll("[^a-zA-Z0-9._-]", "_");
-  }
+  private String detectMimeType(byte[] bytes) {
+    if (bytes == null || bytes.length < 4) {
+      return null;
+    }
 
-  private String detectMime(byte[] bytes) {
-    if (isPdf(bytes)) return "application/pdf";
-    if (isPng(bytes)) return "image/png";
     if (isJpeg(bytes)) return "image/jpeg";
+    if (isPng(bytes)) return "image/png";
     if (isWebp(bytes)) return "image/webp";
+    if (isPdf(bytes)) return "application/pdf";
+
     return null;
   }
 
-  private boolean isPdf(byte[] bytes) {
-    return bytes.length >= 4
-        && bytes[0] == 0x25
-        && bytes[1] == 0x50
-        && bytes[2] == 0x44
-        && bytes[3] == 0x46;
+  private boolean isJpeg(byte[] bytes) {
+    return bytes.length >= 3
+        && (bytes[0] & 0xFF) == 0xFF
+        && (bytes[1] & 0xFF) == 0xD8
+        && (bytes[2] & 0xFF) == 0xFF;
   }
 
   private boolean isPng(byte[] bytes) {
@@ -207,41 +280,23 @@ public class SecureUploadService {
         && bytes[7] == 0x0A;
   }
 
-  private boolean isJpeg(byte[] bytes) {
-    return bytes.length >= 3
-        && (bytes[0] & 0xFF) == 0xFF
-        && (bytes[1] & 0xFF) == 0xD8
-        && (bytes[2] & 0xFF) == 0xFF;
+  private boolean isPdf(byte[] bytes) {
+    return bytes.length >= 4
+        && bytes[0] == 0x25
+        && bytes[1] == 0x50
+        && bytes[2] == 0x44
+        && bytes[3] == 0x46;
   }
 
   private boolean isWebp(byte[] bytes) {
     return bytes.length >= 12
-        && bytes[0] == 'R'
-        && bytes[1] == 'I'
-        && bytes[2] == 'F'
-        && bytes[3] == 'F'
-        && bytes[8] == 'W'
-        && bytes[9] == 'E'
-        && bytes[10] == 'B'
-        && bytes[11] == 'P';
+        && bytes[0] == 0x52
+        && bytes[1] == 0x49
+        && bytes[2] == 0x46
+        && bytes[3] == 0x46
+        && bytes[8] == 0x57
+        && bytes[9] == 0x45
+        && bytes[10] == 0x42
+        && bytes[11] == 0x50;
   }
-
-  private enum FileKind {
-    IMAGE,
-    RECEIPT
-  }
-
-  public record StoredUpload(
-      String url,
-      String originalFilename,
-      String contentType
-  ) {}
-
-  private record ValidatedFile(
-      String originalName,
-      String safeOriginalName,
-      String extension,
-      String detectedMime,
-      byte[] bytes
-  ) {}
 }

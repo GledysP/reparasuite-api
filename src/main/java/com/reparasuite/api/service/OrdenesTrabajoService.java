@@ -94,6 +94,7 @@ public class OrdenesTrabajoService {
   private final CategoriaEquipoRepo categoriaEquipoRepo;
   private final AuthContextService authContextService;
   private final SecureUploadService secureUploadService;
+  private final OtCodigoService otCodigoService;
 
   public OrdenesTrabajoService(
       OrdenTrabajoRepo otRepo,
@@ -112,7 +113,8 @@ public class OrdenesTrabajoService {
       EquipoRepo equipoRepo,
       CategoriaEquipoRepo categoriaEquipoRepo,
       AuthContextService authContextService,
-      SecureUploadService secureUploadService
+      SecureUploadService secureUploadService,
+      OtCodigoService otCodigoService
   ) {
     this.otRepo = otRepo;
     this.clienteRepo = clienteRepo;
@@ -131,6 +133,7 @@ public class OrdenesTrabajoService {
     this.categoriaEquipoRepo = categoriaEquipoRepo;
     this.authContextService = authContextService;
     this.secureUploadService = secureUploadService;
+    this.otCodigoService = otCodigoService;
   }
 
   public ApiListaResponse<OtListaItemDto> listar(String query, int page, int size) {
@@ -305,7 +308,7 @@ public class OrdenesTrabajoService {
     Taller t = tallerRepo.findById(1L)
         .orElseThrow(() -> new NotFoundException("Taller no configurado"));
 
-    String codigo = generarCodigo(t.getPrefijoOt());
+    String codigo = otCodigoService.generarCodigo(t.getPrefijoOt());
 
     TipoOt tipo = parseEnumRequired(TipoOt.class, req.tipo(), "tipo");
     PrioridadOt prioridad = parseEnumRequired(PrioridadOt.class, req.prioridad(), "prioridad");
@@ -597,7 +600,7 @@ public class OrdenesTrabajoService {
 
     registrarEvento(ot, EventoHistorialOt.PAGO_MARCADO_TRANSFERENCIA, "Backoffice confirmó pago recibido");
   }
-  
+
   private EstadoPagoOt resolveEstadoPagoConfirmado() {
     for (String n : List.of("CONFIRMADO", "PAGADO", "RECIBIDO")) {
       try {
@@ -718,7 +721,7 @@ public class OrdenesTrabajoService {
     Taller t = tallerRepo.findById(1L)
         .orElseThrow(() -> new NotFoundException("Taller no configurado"));
 
-    String codigo = generarCodigo(t.getPrefijoOt());
+    String codigo = otCodigoService.generarCodigo(t.getPrefijoOt());
 
     TipoOt tipo = parseTipoTicket(ticket.getTipoServicioSugerido());
     PrioridadOt prioridad = PrioridadOt.MEDIA;
@@ -948,11 +951,6 @@ public class OrdenesTrabajoService {
     } catch (IllegalArgumentException ex) {
       return TipoOt.DOMICILIO;
     }
-  }
-
-  private String generarCodigo(String prefijo) {
-    long num = System.currentTimeMillis() % 100000;
-    return prefijo + "-" + String.format("%05d", num);
   }
 
   private String recortar(String s, int max) {

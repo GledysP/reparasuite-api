@@ -4,14 +4,35 @@ import java.io.IOException;
 import java.util.List;
 import java.util.UUID;
 
-import org.springframework.data.domain.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.reparasuite.api.dto.*;
-import com.reparasuite.api.model.*;
-import com.reparasuite.api.repo.*;
+import com.reparasuite.api.dto.ApiListaResponse;
+import com.reparasuite.api.dto.MensajeDto;
+import com.reparasuite.api.dto.MensajeEnviarRequest;
+import com.reparasuite.api.dto.TicketBackofficeListaItemDto;
+import com.reparasuite.api.dto.TicketCrearOtResponse;
+import com.reparasuite.api.dto.TicketCrearRequest;
+import com.reparasuite.api.dto.TicketDetalleDto;
+import com.reparasuite.api.dto.TicketFotoDto;
+import com.reparasuite.api.dto.TicketListaItemDto;
+import com.reparasuite.api.model.Cliente;
+import com.reparasuite.api.model.EstadoTicket;
+import com.reparasuite.api.model.OrdenTrabajo;
+import com.reparasuite.api.model.TicketFoto;
+import com.reparasuite.api.model.TicketMensaje;
+import com.reparasuite.api.model.TicketSolicitud;
+import com.reparasuite.api.model.TipoRemitente;
+import com.reparasuite.api.repo.ClienteRepo;
+import com.reparasuite.api.repo.OrdenTrabajoRepo;
+import com.reparasuite.api.repo.TicketFotoRepo;
+import com.reparasuite.api.repo.TicketMensajeRepo;
+import com.reparasuite.api.repo.TicketSolicitudRepo;
 
 @Service
 public class TicketsService {
@@ -59,7 +80,8 @@ public class TicketsService {
 
   public TicketDetalleDto obtener(String id) {
     UUID clienteId = requireClienteId();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id))
+        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     if (!t.getCliente().getId().equals(clienteId)) {
       throw new SecurityException("No autorizado");
@@ -71,7 +93,8 @@ public class TicketsService {
   @Transactional
   public TicketDetalleDto crear(TicketCrearRequest req) {
     UUID clienteId = requireClienteId();
-    Cliente c = clienteRepo.findById(clienteId).orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+    Cliente c = clienteRepo.findById(clienteId)
+        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
 
     TicketSolicitud t = new TicketSolicitud();
     t.setCliente(c);
@@ -121,13 +144,15 @@ public class TicketsService {
   @Transactional
   public void anadirMensaje(String ticketId, MensajeEnviarRequest req) {
     UUID clienteId = requireClienteId();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
+        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     if (!t.getCliente().getId().equals(clienteId)) {
       throw new SecurityException("No autorizado");
     }
 
-    Cliente c = clienteRepo.findById(clienteId).orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+    Cliente c = clienteRepo.findById(clienteId)
+        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
 
     TicketMensaje m = new TicketMensaje();
     m.setTicket(t);
@@ -142,7 +167,8 @@ public class TicketsService {
   @Transactional
   public TicketFotoDto subirFotoCliente(String ticketId, MultipartFile file) throws IOException {
     UUID clienteId = requireClienteId();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
+        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     if (!t.getCliente().getId().equals(clienteId)) {
       throw new SecurityException("No autorizado");
@@ -175,7 +201,8 @@ public class TicketsService {
 
   public TicketDetalleDto obtenerBackoffice(String id) {
     requireBackofficeRole();
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(id))
+        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
     return toDetalleDto(t);
   }
 
@@ -183,7 +210,8 @@ public class TicketsService {
   public void anadirMensajeBackoffice(String ticketId, MensajeEnviarRequest req) {
     requireBackofficeRole();
 
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
+        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     TicketMensaje m = new TicketMensaje();
     m.setTicket(t);
@@ -199,7 +227,8 @@ public class TicketsService {
   public TicketFotoDto subirFotoBackoffice(String ticketId, MultipartFile file) throws IOException {
     requireBackofficeRole();
 
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
+        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
     return guardarFotoTicket(t, file);
   }
 
@@ -207,7 +236,8 @@ public class TicketsService {
   public TicketCrearOtResponse crearOtDesdeTicketBackoffice(String ticketId) {
     requireBackofficeRole();
 
-    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId)).orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+    TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
+        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
 
     UUID otExistenteId = t.getOrdenTrabajoId();
     if (otExistenteId != null) {
@@ -279,7 +309,7 @@ public class TicketsService {
   }
 
   private TicketFotoDto guardarFotoTicket(TicketSolicitud ticket, MultipartFile file) throws IOException {
-    var stored = secureUploadService.storeTicketImage(ticket.getId(), file);
+    SecureUploadService.StoredFile stored = secureUploadService.storeTicketImage(ticket.getId(), file);
 
     TicketFoto foto = new TicketFoto();
     foto.setTicket(ticket);
@@ -289,7 +319,12 @@ public class TicketsService {
 
     ticketRepo.save(ticket);
 
-    return new TicketFotoDto(foto.getId(), foto.getUrl(), foto.getNombreOriginal(), foto.getCreatedAt());
+    return new TicketFotoDto(
+        foto.getId(),
+        foto.getUrl(),
+        foto.getNombreOriginal(),
+        foto.getCreatedAt()
+    );
   }
 
   private UUID requireClienteId() {
