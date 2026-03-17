@@ -7,6 +7,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.springframework.stereotype.Service;
 
+import com.reparasuite.api.exception.TooManyRequestsException;
+
 @Service
 public class LoginRateLimitService {
 
@@ -24,7 +26,7 @@ public class LoginRateLimitService {
 
     Instant now = Instant.now();
     if (state.blockedUntil != null && state.blockedUntil.isAfter(now)) {
-      throw new IllegalStateException("Demasiados intentos fallidos. Intenta más tarde");
+      throw new TooManyRequestsException("Demasiados intentos fallidos. Intenta más tarde");
     }
   }
 

@@ -2,6 +2,7 @@ package com.reparasuite.api.service;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import org.springframework.data.domain.Page;
@@ -18,6 +19,7 @@ import com.reparasuite.api.dto.InventarioItemDetalleDto;
 import com.reparasuite.api.dto.InventarioItemResumenDto;
 import com.reparasuite.api.dto.InventarioMovimientoCrearRequest;
 import com.reparasuite.api.dto.InventarioMovimientoDto;
+import com.reparasuite.api.exception.BadRequestException;
 import com.reparasuite.api.exception.ConflictException;
 import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.InventarioCategoria;
@@ -71,12 +73,15 @@ public class InventarioService {
 
   @Transactional
   public InventarioItemDetalleDto crear(InventarioItemCrearRequest req) {
-    if (itemRepo.existsBySkuIgnoreCase(req.sku().trim())) {
+    String sku = normalizeRequired(req.sku(), "sku");
+
+    if (itemRepo.existsBySkuIgnoreCase(sku)) {
       throw new ConflictException("Ya existe un item con ese SKU");
     }
 
     InventarioItem i = new InventarioItem();
     aplicarReq(i, req);
+    i.setSku(sku);
     i.setStockActual(BigDecimal.ZERO);
     i = itemRepo.save(i);
     return toDetalle(i);
@@ -87,13 +92,14 @@ public class InventarioService {
     InventarioItem i = itemRepo.findById(id)
         .orElseThrow(() -> new NotFoundException("Item no encontrado"));
 
-    String skuNuevo = req.sku().trim();
+    String skuNuevo = normalizeRequired(req.sku(), "sku");
     if (!i.getSku().equalsIgnoreCase(skuNuevo) && itemRepo.existsBySkuIgnoreCase(skuNuevo)) {
       throw new ConflictException("Ya existe un item con ese SKU");
     }
 
     BigDecimal stockActual = i.getStockActual();
     aplicarReq(i, req);
+    i.setSku(skuNuevo);
     i.setStockActual(stockActual);
     i = itemRepo.save(i);
     return toDetalle(i);
@@ -116,17 +122,17 @@ public class InventarioService {
     InventarioItem item = itemRepo.findById(itemId)
         .orElseThrow(() -> new NotFoundException("Item no encontrado"));
 
-    TipoMovimientoInventario tipo = TipoMovimientoInventario.valueOf(req.tipoMovimiento().trim().toUpperCase());
+    TipoMovimientoInventario tipo = parseTipoMovimiento(req.tipoMovimiento());
     BigDecimal cantidad = parseDecimal(req.cantidad(), "cantidad");
     if (cantidad.compareTo(BigDecimal.ZERO) <= 0) {
-      throw new IllegalArgumentException("La cantidad debe ser mayor que cero");
+      throw new BadRequestException("La cantidad debe ser mayor que cero");
     }
 
     BigDecimal stockAnterior = item.getStockActual() == null ? BigDecimal.ZERO : item.getStockActual();
     BigDecimal stockResultante = calcularStockResultante(stockAnterior, cantidad, tipo);
 
     if (item.isControlaStock() && !item.isPermiteStockNegativo() && stockResultante.compareTo(BigDecimal.ZERO) < 0) {
-      throw new IllegalStateException("El movimiento dejaría stock negativo");
+      throw new ConflictException("El movimiento dejaría stock negativo");
     }
 
     item.setStockActual(stockResultante);
@@ -159,9 +165,8 @@ public class InventarioService {
   }
 
   private void aplicarReq(InventarioItem i, InventarioItemCrearRequest req) {
-    i.setSku(req.sku().trim());
     i.setCodigoBarras(limpiarNullable(req.codigoBarras()));
-    i.setNombre(req.nombre().trim());
+    i.setNombre(normalizeRequired(req.nombre(), "nombre"));
     i.setDescripcion(limpiarNullable(req.descripcion()));
     i.setCategoria(resolveCategoria(req.categoriaId()));
     i.setMarca(limpiarNullable(req.marca()));
@@ -187,7 +192,23 @@ public class InventarioService {
 
   private UnidadMedidaInventario resolveUnidad(String raw) {
     if (raw == null || raw.isBlank()) return UnidadMedidaInventario.UNIDAD;
-    return UnidadMedidaInventario.valueOf(raw.trim().toUpperCase());
+    try {
+      return UnidadMedidaInventario.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException ex) {
+      throw new BadRequestException("Unidad de medida inválida: " + raw);
+    }
+  }
+
+  private TipoMovimientoInventario parseTipoMovimiento(String raw) {
+    if (raw == null || raw.isBlank()) {
+      throw new BadRequestException("El tipoMovimiento es obligatorio");
+    }
+
+    try {
+      return TipoMovimientoInventario.valueOf(raw.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException ex) {
+      throw new BadRequestException("Tipo de movimiento inválido: " + raw);
+    }
   }
 
   private BigDecimal calcularStockResultante(BigDecimal stockAnterior, BigDecimal cantidad, TipoMovimientoInventario tipo) {
@@ -265,7 +286,7 @@ public class InventarioService {
     try {
       return new BigDecimal(raw.trim());
     } catch (Exception e) {
-      throw new IllegalArgumentException("Valor inválido para " + field + ": " + raw);
+      throw new BadRequestException("Valor inválido para " + field + ": " + raw);
     }
   }
 
@@ -282,5 +303,12 @@ public class InventarioService {
     if (s == null) return null;
     String t = s.trim();
     return t.isBlank() ? null : t;
+  }
+
+  private String normalizeRequired(String value, String field) {
+    if (value == null || value.trim().isBlank()) {
+      throw new BadRequestException("El campo " + field + " es obligatorio");
+    }
+    return value.trim();
   }
 }

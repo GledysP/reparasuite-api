@@ -1,6 +1,7 @@
 package com.reparasuite.api.service;
 
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ import com.reparasuite.api.dto.CategoriaEquipoGuardarRequest;
 import com.reparasuite.api.dto.EquipoCrearRequest;
 import com.reparasuite.api.dto.EquipoDetalleDto;
 import com.reparasuite.api.dto.EquipoResumenDto;
+import com.reparasuite.api.exception.BadRequestException;
 import com.reparasuite.api.exception.ConflictException;
 import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.CategoriaEquipo;
@@ -271,7 +273,11 @@ public class EquiposService {
 
   private LocalDate parseDateNullable(String raw) {
     if (raw == null || raw.isBlank()) return null;
-    return LocalDate.parse(raw.trim());
+    try {
+      return LocalDate.parse(raw.trim());
+    } catch (DateTimeParseException ex) {
+      throw new BadRequestException("Fecha inválida: " + raw);
+    }
   }
 
   private String limpiarNullable(String s) {
@@ -283,7 +289,7 @@ public class EquiposService {
   private String cleanRequired(String value, String fieldName) {
     String x = limpiarNullable(value);
     if (x == null) {
-      throw new IllegalArgumentException("El campo " + fieldName + " es obligatorio");
+      throw new BadRequestException("El campo " + fieldName + " es obligatorio");
     }
     return x;
   }

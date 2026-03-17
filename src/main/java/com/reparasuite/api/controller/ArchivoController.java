@@ -13,9 +13,15 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.reparasuite.api.exception.ForbiddenException;
 import com.reparasuite.api.exception.NotFoundException;
+import com.reparasuite.api.model.FotoOt;
 import com.reparasuite.api.model.OrdenTrabajo;
+import com.reparasuite.api.model.PagoOt;
+import com.reparasuite.api.model.TicketFoto;
 import com.reparasuite.api.model.TicketSolicitud;
+import com.reparasuite.api.repo.FotoOtRepo;
 import com.reparasuite.api.repo.OrdenTrabajoRepo;
+import com.reparasuite.api.repo.PagoOtRepo;
+import com.reparasuite.api.repo.TicketFotoRepo;
 import com.reparasuite.api.repo.TicketSolicitudRepo;
 import com.reparasuite.api.service.AuthContextService;
 import com.reparasuite.api.service.SecureUploadService;
@@ -26,17 +32,26 @@ public class ArchivoController {
   private final SecureUploadService secureUploadService;
   private final OrdenTrabajoRepo ordenTrabajoRepo;
   private final TicketSolicitudRepo ticketSolicitudRepo;
+  private final FotoOtRepo fotoOtRepo;
+  private final PagoOtRepo pagoOtRepo;
+  private final TicketFotoRepo ticketFotoRepo;
   private final AuthContextService authContextService;
 
   public ArchivoController(
       SecureUploadService secureUploadService,
       OrdenTrabajoRepo ordenTrabajoRepo,
       TicketSolicitudRepo ticketSolicitudRepo,
+      FotoOtRepo fotoOtRepo,
+      PagoOtRepo pagoOtRepo,
+      TicketFotoRepo ticketFotoRepo,
       AuthContextService authContextService
   ) {
     this.secureUploadService = secureUploadService;
     this.ordenTrabajoRepo = ordenTrabajoRepo;
     this.ticketSolicitudRepo = ticketSolicitudRepo;
+    this.fotoOtRepo = fotoOtRepo;
+    this.pagoOtRepo = pagoOtRepo;
+    this.ticketFotoRepo = ticketFotoRepo;
     this.authContextService = authContextService;
   }
 
@@ -46,6 +61,14 @@ public class ArchivoController {
       @PathVariable String filename
   ) {
     OrdenTrabajo ot = requireAuthorizedOt(otId);
+
+    FotoOt foto = fotoOtRepo.findByUrl("/api/v1/archivos/ot/" + otId + "/" + filename)
+        .orElseThrow(() -> new NotFoundException("Archivo no encontrado"));
+
+    var auth = authContextService.current();
+    if (auth.isCliente() && !foto.isVisibleCliente()) {
+      throw new ForbiddenException("No autorizado");
+    }
 
     Resource resource = secureUploadService.loadOtImage(ot.getId(), filename);
     String contentType = secureUploadService.probeContentType(resource, filename);
@@ -65,6 +88,13 @@ public class ArchivoController {
       @PathVariable String filename
   ) {
     OrdenTrabajo ot = requireAuthorizedOt(otId);
+
+    PagoOt pago = pagoOtRepo.findByComprobanteUrl("/api/v1/archivos/pagos/" + otId + "/" + filename)
+        .orElseThrow(() -> new NotFoundException("Archivo no encontrado"));
+
+    if (!pago.getOt().getId().equals(ot.getId())) {
+      throw new ForbiddenException("No autorizado");
+    }
 
     Resource resource = secureUploadService.loadPaymentReceipt(ot.getId(), filename);
     String contentType = secureUploadService.probeContentType(resource, filename);
@@ -86,6 +116,13 @@ public class ArchivoController {
       @PathVariable String filename
   ) {
     TicketSolicitud ticket = requireAuthorizedTicket(ticketId);
+
+    TicketFoto foto = ticketFotoRepo.findByUrl("/api/v1/archivos/tickets/" + ticketId + "/" + filename)
+        .orElseThrow(() -> new NotFoundException("Archivo no encontrado"));
+
+    if (!foto.getTicket().getId().equals(ticket.getId())) {
+      throw new ForbiddenException("No autorizado");
+    }
 
     Resource resource = secureUploadService.loadTicketImage(ticket.getId(), filename);
     String contentType = secureUploadService.probeContentType(resource, filename);

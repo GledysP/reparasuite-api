@@ -21,6 +21,8 @@ import com.reparasuite.api.dto.TicketCrearRequest;
 import com.reparasuite.api.dto.TicketDetalleDto;
 import com.reparasuite.api.dto.TicketFotoDto;
 import com.reparasuite.api.dto.TicketListaItemDto;
+import com.reparasuite.api.exception.ForbiddenException;
+import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.Cliente;
 import com.reparasuite.api.model.EstadoTicket;
 import com.reparasuite.api.model.OrdenTrabajo;
@@ -68,7 +70,7 @@ public class TicketsService {
 
   public ApiListaResponse<TicketListaItemDto> listar(int page, int size) {
     UUID clienteId = requireClienteId();
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
+    Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Direction.DESC, "updatedAt"));
     Page<TicketSolicitud> p = ticketRepo.findByCliente_Id(clienteId, pageable);
 
     List<TicketListaItemDto> items = p.getContent().stream()
@@ -81,10 +83,10 @@ public class TicketsService {
   public TicketDetalleDto obtener(String id) {
     UUID clienteId = requireClienteId();
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(id))
-        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
     if (!t.getCliente().getId().equals(clienteId)) {
-      throw new SecurityException("No autorizado");
+      throw new ForbiddenException("No autorizado");
     }
 
     return toDetalleDto(t);
@@ -94,7 +96,7 @@ public class TicketsService {
   public TicketDetalleDto crear(TicketCrearRequest req) {
     UUID clienteId = requireClienteId();
     Cliente c = clienteRepo.findById(clienteId)
-        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
 
     TicketSolicitud t = new TicketSolicitud();
     t.setCliente(c);
@@ -145,14 +147,14 @@ public class TicketsService {
   public void anadirMensaje(String ticketId, MensajeEnviarRequest req) {
     UUID clienteId = requireClienteId();
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
-        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
     if (!t.getCliente().getId().equals(clienteId)) {
-      throw new SecurityException("No autorizado");
+      throw new ForbiddenException("No autorizado");
     }
 
     Cliente c = clienteRepo.findById(clienteId)
-        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
 
     TicketMensaje m = new TicketMensaje();
     m.setTicket(t);
@@ -168,10 +170,10 @@ public class TicketsService {
   public TicketFotoDto subirFotoCliente(String ticketId, MultipartFile file) throws IOException {
     UUID clienteId = requireClienteId();
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
-        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
     if (!t.getCliente().getId().equals(clienteId)) {
-      throw new SecurityException("No autorizado");
+      throw new ForbiddenException("No autorizado");
     }
 
     return guardarFotoTicket(t, file);
@@ -180,7 +182,7 @@ public class TicketsService {
   public ApiListaResponse<TicketBackofficeListaItemDto> listarBackoffice(int page, int size) {
     requireBackofficeRole();
 
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
+    Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Direction.DESC, "updatedAt"));
     Page<TicketSolicitud> p = ticketRepo.findAll(pageable);
 
     List<TicketBackofficeListaItemDto> items = p.getContent().stream()
@@ -202,7 +204,7 @@ public class TicketsService {
   public TicketDetalleDto obtenerBackoffice(String id) {
     requireBackofficeRole();
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(id))
-        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
     return toDetalleDto(t);
   }
 
@@ -211,7 +213,7 @@ public class TicketsService {
     requireBackofficeRole();
 
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
-        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
     TicketMensaje m = new TicketMensaje();
     m.setTicket(t);
@@ -228,7 +230,7 @@ public class TicketsService {
     requireBackofficeRole();
 
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
-        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
     return guardarFotoTicket(t, file);
   }
 
@@ -237,7 +239,7 @@ public class TicketsService {
     requireBackofficeRole();
 
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
-        .orElseThrow(() -> new RuntimeException("Ticket no encontrado"));
+        .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
     UUID otExistenteId = t.getOrdenTrabajoId();
     if (otExistenteId != null) {
@@ -330,14 +332,14 @@ public class TicketsService {
   private UUID requireClienteId() {
     var user = auth();
     if (!user.isCliente()) {
-      throw new SecurityException("No autorizado");
+      throw new ForbiddenException("No autorizado");
     }
     return user.id();
   }
 
   private void requireBackofficeRole() {
     if (!auth().isBackoffice()) {
-      throw new SecurityException("No autorizado");
+      throw new ForbiddenException("No autorizado");
     }
   }
 

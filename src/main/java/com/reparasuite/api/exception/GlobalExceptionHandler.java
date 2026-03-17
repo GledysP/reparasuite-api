@@ -1,6 +1,7 @@
 package com.reparasuite.api.exception;
 
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.stream.Collectors;
 
 import org.springframework.http.HttpStatus;
@@ -11,6 +12,7 @@ import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -38,7 +40,9 @@ public class GlobalExceptionHandler {
   @ExceptionHandler({
       MethodArgumentNotValidException.class,
       BindException.class,
-      IllegalArgumentException.class
+      IllegalArgumentException.class,
+      HttpMessageNotReadableException.class,
+      DateTimeParseException.class
   })
   public ResponseEntity<ApiErrorResponse> handleBadRequest(
       Exception ex,
@@ -64,6 +68,10 @@ public class GlobalExceptionHandler {
       if (message.isBlank()) {
         message = "Solicitud inválida";
       }
+    } else if (ex instanceof HttpMessageNotReadableException) {
+      message = "El cuerpo de la solicitud es inválido o tiene un formato incorrecto";
+    } else if (ex instanceof DateTimeParseException) {
+      message = "Formato de fecha/hora inválido";
     } else {
       message = ex.getMessage() != null && !ex.getMessage().isBlank()
           ? ex.getMessage()
@@ -84,7 +92,8 @@ public class GlobalExceptionHandler {
   @ExceptionHandler({
       AccessDeniedException.class,
       AuthorizationDeniedException.class,
-      ForbiddenException.class
+      ForbiddenException.class,
+      SecurityException.class
   })
   public ResponseEntity<ApiErrorResponse> handleForbidden(
       Exception ex,

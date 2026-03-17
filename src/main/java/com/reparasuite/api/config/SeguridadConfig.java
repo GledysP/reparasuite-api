@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 
@@ -26,8 +27,10 @@ import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 
 import com.reparasuite.api.security.JwtAccessDeniedHandler;
 import com.reparasuite.api.security.JwtAuthenticationEntryPoint;
+import com.reparasuite.api.security.JwtRoleAuthenticationConverter;
 
 @Configuration
+@EnableMethodSecurity
 public class SeguridadConfig {
 
   @Value("${reparasuite.jwt.secret}")
@@ -38,37 +41,40 @@ public class SeguridadConfig {
 
   private final JwtAuthenticationEntryPoint authenticationEntryPoint;
   private final JwtAccessDeniedHandler accessDeniedHandler;
+  private final JwtRoleAuthenticationConverter jwtRoleAuthenticationConverter;
 
   public SeguridadConfig(
       JwtAuthenticationEntryPoint authenticationEntryPoint,
-      JwtAccessDeniedHandler accessDeniedHandler
+      JwtAccessDeniedHandler accessDeniedHandler,
+      JwtRoleAuthenticationConverter jwtRoleAuthenticationConverter
   ) {
     this.authenticationEntryPoint = authenticationEntryPoint;
     this.accessDeniedHandler = accessDeniedHandler;
+    this.jwtRoleAuthenticationConverter = jwtRoleAuthenticationConverter;
   }
 
   @Bean
   SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
     http
-      .csrf(csrf -> csrf.disable())
-      .cors(Customizer.withDefaults())
-      .authorizeHttpRequests(auth -> auth
-        .requestMatchers("/api/v1/auth/**").permitAll()
-        .requestMatchers("/api/v1/portal/auth/**").permitAll()
-        .requestMatchers("/v3/api-docs/**").permitAll()
-        .requestMatchers("/swagger-ui/**").permitAll()
-        .requestMatchers("/swagger-ui.html").permitAll()
-        .anyRequest().authenticated()
-      )
-      .exceptionHandling(ex -> ex
-        .authenticationEntryPoint(authenticationEntryPoint)
-        .accessDeniedHandler(accessDeniedHandler)
-      )
-      .oauth2ResourceServer(oauth2 -> oauth2
-        .authenticationEntryPoint(authenticationEntryPoint)
-        .accessDeniedHandler(accessDeniedHandler)
-        .jwt(Customizer.withDefaults())
-      );
+        .csrf(csrf -> csrf.disable())
+        .cors(Customizer.withDefaults())
+        .authorizeHttpRequests(auth -> auth
+            .requestMatchers("/api/v1/auth/**").permitAll()
+            .requestMatchers("/api/v1/portal/auth/**").permitAll()
+            .requestMatchers("/v3/api-docs/**").permitAll()
+            .requestMatchers("/swagger-ui/**").permitAll()
+            .requestMatchers("/swagger-ui.html").permitAll()
+            .anyRequest().authenticated()
+        )
+        .exceptionHandling(ex -> ex
+            .authenticationEntryPoint(authenticationEntryPoint)
+            .accessDeniedHandler(accessDeniedHandler)
+        )
+        .oauth2ResourceServer(oauth2 -> oauth2
+            .authenticationEntryPoint(authenticationEntryPoint)
+            .accessDeniedHandler(accessDeniedHandler)
+            .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtRoleAuthenticationConverter))
+        );
 
     return http.build();
   }
