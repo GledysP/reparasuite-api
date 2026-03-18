@@ -1,6 +1,7 @@
 package com.reparasuite.api.service;
 
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 
@@ -375,7 +376,7 @@ public class OrdenesTrabajoService {
     ot.setEstado(EstadoOt.RECIBIDA);
 
     if (req.fechaPrevista() != null && !req.fechaPrevista().isBlank()) {
-      ot.setFechaPrevista(OffsetDateTime.parse(req.fechaPrevista()));
+      ot.setFechaPrevista(parseOffsetDateTime(req.fechaPrevista(), "fechaPrevista"));
     }
 
     ot.setDireccion(limpiarNullable(req.direccion()));
@@ -446,9 +447,7 @@ public class OrdenesTrabajoService {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
     if (auth().isCliente()) {
-      if (!ot.getCliente().getId().equals(auth().id())) {
-        throw new ForbiddenException("No autorizado");
-      }
+      ensureClienteOwner(ot);
       visibleCliente = true;
     } else if (!auth().isBackoffice()) {
       throw new ForbiddenException("No autorizado");
@@ -472,9 +471,7 @@ public class OrdenesTrabajoService {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
     if (auth().isCliente()) {
-      if (!ot.getCliente().getId().equals(auth().id())) {
-        throw new ForbiddenException("No autorizado");
-      }
+      ensureClienteOwner(ot);
       visibleCliente = true;
     } else if (!auth().isBackoffice()) {
       throw new ForbiddenException("No autorizado");
@@ -556,12 +553,10 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public void aceptarPresupuesto(String idOrCodigo, boolean acepto) {
-    requireCliente();
+    ensureClienteForOt(idOrCodigo);
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(auth().id())) {
-      throw new ForbiddenException("No autorizado");
-    }
+    ensureClienteOwner(ot);
 
     PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId())
         .orElseThrow(() -> new NotFoundException("Presupuesto no encontrado"));
@@ -587,12 +582,10 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public void rechazarPresupuesto(String idOrCodigo) {
-    requireCliente();
+    ensureClienteForOt(idOrCodigo);
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(auth().id())) {
-      throw new ForbiddenException("No autorizado");
-    }
+    ensureClienteOwner(ot);
 
     PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId())
         .orElseThrow(() -> new NotFoundException("Presupuesto no encontrado"));
@@ -615,12 +608,10 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public void marcarTransferencia(String idOrCodigo) {
-    requireCliente();
+    ensureClienteForOt(idOrCodigo);
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(auth().id())) {
-      throw new ForbiddenException("No autorizado");
-    }
+    ensureClienteOwner(ot);
 
     PagoOt p = pagoRepo.findByOt_Id(ot.getId()).orElseGet(() -> {
       PagoOt x = new PagoOt();
@@ -638,12 +629,10 @@ public class OrdenesTrabajoService {
 
   @Transactional
   public PagoDto subirComprobantePago(String idOrCodigo, MultipartFile file) throws java.io.IOException {
-    requireCliente();
+    ensureClienteForOt(idOrCodigo);
 
     OrdenTrabajo ot = resolverOt(idOrCodigo);
-    if (!ot.getCliente().getId().equals(auth().id())) {
-      throw new ForbiddenException("No autorizado");
-    }
+    ensureClienteOwner(ot);
 
     PagoOt p = pagoRepo.findByOt_Id(ot.getId())
         .orElseThrow(() -> new NotFoundException("Pago no encontrado"));
@@ -690,15 +679,13 @@ public class OrdenesTrabajoService {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
     if (auth().isCliente()) {
-      if (!ot.getCliente().getId().equals(auth().id())) {
-        throw new ForbiddenException("No autorizado");
-      }
+      ensureClienteOwner(ot);
     } else if (!auth().isBackoffice()) {
       throw new ForbiddenException("No autorizado");
     }
 
-    OffsetDateTime inicio = OffsetDateTime.parse(req.inicio());
-    OffsetDateTime fin = OffsetDateTime.parse(req.fin());
+    OffsetDateTime inicio = parseOffsetDateTime(req.inicio(), "inicio");
+    OffsetDateTime fin = parseOffsetDateTime(req.fin(), "fin");
 
     if (!fin.isAfter(inicio)) {
       throw new BadRequestException("La fecha/hora fin debe ser mayor que inicio");
@@ -728,15 +715,13 @@ public class OrdenesTrabajoService {
     OrdenTrabajo ot = c.getOt();
 
     if (auth().isCliente()) {
-      if (!ot.getCliente().getId().equals(auth().id())) {
-        throw new ForbiddenException("No autorizado");
-      }
+      ensureClienteOwner(ot);
     } else if (!auth().isBackoffice()) {
       throw new ForbiddenException("No autorizado");
     }
 
-    OffsetDateTime inicio = OffsetDateTime.parse(req.inicio());
-    OffsetDateTime fin = OffsetDateTime.parse(req.fin());
+    OffsetDateTime inicio = parseOffsetDateTime(req.inicio(), "inicio");
+    OffsetDateTime fin = parseOffsetDateTime(req.fin(), "fin");
 
     if (!fin.isAfter(inicio)) {
       throw new BadRequestException("La fecha/hora fin debe ser mayor que inicio");
@@ -760,10 +745,9 @@ public class OrdenesTrabajoService {
   public MensajeDto enviarMensaje(String idOrCodigo, String contenido) {
     OrdenTrabajo ot = resolverOt(idOrCodigo);
 
-    if (auth().isCliente() && !ot.getCliente().getId().equals(auth().id())) {
-      throw new ForbiddenException("No autorizado");
-    }
-    if (!auth().isCliente() && !auth().isBackoffice()) {
+    if (auth().isCliente()) {
+      ensureClienteOwner(ot);
+    } else if (!auth().isBackoffice()) {
       throw new ForbiddenException("No autorizado");
     }
 
@@ -805,24 +789,22 @@ public class OrdenesTrabajoService {
     String codigo = otCodigoService.generarCodigo(t.getPrefijoOt());
 
     TipoOt tipo;
+    PrioridadOt prioridad;
+
     try {
-      tipo = TipoOt.valueOf(
-          (ticket.getTipoServicioSugerido() == null || ticket.getTipoServicioSugerido().isBlank())
-              ? "DOMICILIO"
-              : ticket.getTipoServicioSugerido().trim().toUpperCase()
-      );
+      tipo = TipoOt.valueOf(readTipoServicioTicket(ticket, "DOMICILIO"));
     } catch (Exception e) {
       tipo = TipoOt.DOMICILIO;
     }
 
-    PrioridadOt prioridad = PrioridadOt.MEDIA;
+    prioridad = PrioridadOt.MEDIA;
 
-    String equipo = limpiarNullable(ticket.getEquipo());
+    String equipo = limpiarNullable(readEquipoTicket(ticket));
     if (equipo == null) {
       equipo = limpiarNullable(ticket.getAsunto());
     }
 
-    String falla = limpiarNullable(ticket.getDescripcionFalla());
+    String falla = limpiarNullable(readDescripcionFallaTicket(ticket));
     String descripcionLimpia = (falla != null && !falla.isBlank())
         ? falla
         : limpiarDescripcionDesdeTicket(ticket.getDescripcion());
@@ -838,7 +820,7 @@ public class OrdenesTrabajoService {
     ot.setDescripcion(descripcionLimpia);
     ot.setEstado(EstadoOt.RECIBIDA);
 
-    String direccion = limpiarNullable(ticket.getDireccion());
+    String direccion = limpiarNullable(readDireccionTicket(ticket));
     if (tipo == TipoOt.DOMICILIO && direccion != null) {
       ot.setDireccion(direccion);
     }
@@ -938,6 +920,24 @@ public class OrdenesTrabajoService {
     }
   }
 
+  private void requireBackoffice() {
+    if (!auth().isBackoffice()) {
+      throw new ForbiddenException("No autorizado");
+    }
+  }
+
+  private void ensureClienteForOt(String idOrCodigo) {
+    if (!auth().isCliente()) {
+      throw new ForbiddenException("No autorizado");
+    }
+  }
+
+  private void ensureClienteOwner(OrdenTrabajo ot) {
+    if (!auth().isCliente() || !ot.getCliente().getId().equals(auth().id())) {
+      throw new ForbiddenException("No autorizado");
+    }
+  }
+
   private String recortar(String s, int max) {
     if (s == null) return "";
     String t = s.trim();
@@ -973,6 +973,23 @@ public class OrdenesTrabajoService {
     if (s == null) return null;
     String t = s.trim();
     return t.isBlank() ? null : t;
+  }
+
+  private String readEquipoTicket(TicketSolicitud t) {
+    return t.getEquipo();
+  }
+
+  private String readDescripcionFallaTicket(TicketSolicitud t) {
+    return t.getDescripcionFalla();
+  }
+
+  private String readDireccionTicket(TicketSolicitud t) {
+    return t.getDireccion();
+  }
+
+  private String readTipoServicioTicket(TicketSolicitud t, String fallback) {
+    String v = t.getTipoServicioSugerido();
+    return (v == null || v.isBlank()) ? fallback : v;
   }
 
   private String limpiarDescripcionDesdeTicket(String descripcionTicket) {
@@ -1029,6 +1046,14 @@ public class OrdenesTrabajoService {
     }
   }
 
+  private OffsetDateTime parseOffsetDateTime(String raw, String fieldName) {
+    try {
+      return OffsetDateTime.parse(raw.trim());
+    } catch (DateTimeParseException ex) {
+      throw new BadRequestException("Fecha inválida para " + fieldName + ": " + raw);
+    }
+  }
+
   private EstadoPagoOt resolveEstadoPagoConfirmado() {
     for (String n : List.of("CONFIRMADO", "PAGADO", "RECIBIDO")) {
       try {
@@ -1037,18 +1062,6 @@ public class OrdenesTrabajoService {
       }
     }
     return EstadoPagoOt.CONFIRMADO;
-  }
-
-  private void requireBackoffice() {
-    if (!auth().isBackoffice()) {
-      throw new ForbiddenException("No autorizado");
-    }
-  }
-
-  private void requireCliente() {
-    if (!auth().isCliente()) {
-      throw new ForbiddenException("No autorizado");
-    }
   }
 
   private AuthContextService.AuthUser auth() {

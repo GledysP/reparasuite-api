@@ -2,7 +2,14 @@ package com.reparasuite.api.exception;
 
 public class TooManyRequestsException extends ApiException {
 
-  public TooManyRequestsException(String message) {
+  private final long retryAfterSeconds;
+
+  public TooManyRequestsException(String message, long retryAfterSeconds) {
     super(429, message);
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+
+  public long getRetryAfterSeconds() {
+    return retryAfterSeconds;
   }
 }

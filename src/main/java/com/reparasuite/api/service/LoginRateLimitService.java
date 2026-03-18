@@ -26,7 +26,15 @@ public class LoginRateLimitService {
 
     Instant now = Instant.now();
     if (state.blockedUntil != null && state.blockedUntil.isAfter(now)) {
-      throw new TooManyRequestsException("Demasiados intentos fallidos. Intenta más tarde");
+      long retryAfterSeconds = Duration.between(now, state.blockedUntil).toSeconds();
+      if (retryAfterSeconds <= 0) {
+        retryAfterSeconds = 1;
+      }
+
+      throw new TooManyRequestsException(
+          "Demasiados intentos fallidos. Intenta más tarde",
+          retryAfterSeconds
+      );
     }
   }
 
