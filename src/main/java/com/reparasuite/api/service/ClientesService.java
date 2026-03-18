@@ -2,7 +2,6 @@ package com.reparasuite.api.service;
 
 import java.util.UUID;
 
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -47,6 +46,7 @@ public class ClientesService {
     this.secureUploadService = secureUploadService;
   }
 
+  @Transactional(readOnly = true)
   public ApiListaResponse<ClienteResumenDto> listar(String query, int page, int size) {
     int pageSafe = Math.max(page, 0);
     int sizeSafe = Math.max(size, 1);
@@ -57,26 +57,23 @@ public class ClientesService {
         Sort.by(Sort.Direction.ASC, "nombre")
     );
 
-    Page<Cliente> p;
-    if (query == null || query.isBlank()) {
-      p = clienteRepo.findAll(pageable);
-    } else {
-      p = clienteRepo.buscarPorNombreTelefonoEmail(query.trim(), pageable);
-    }
+    var p = (query == null || query.isBlank())
+        ? clienteRepo.listarResumen(pageable)
+        : clienteRepo.buscarResumen(query.trim(), pageable);
 
     return new ApiListaResponse<>(
-        p.getContent().stream().map(this::toResumen).toList(),
+        p.getContent(),
         p.getTotalElements()
     );
   }
 
+  @Transactional(readOnly = true)
   public ClienteResumenDto obtener(UUID id) {
-    Cliente c = clienteRepo.findById(id)
+    return clienteRepo.obtenerResumenPorId(id)
         .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
-
-    return toResumen(c);
   }
 
+  @Transactional(readOnly = true)
   public ApiListaResponse<ClienteOtItemDto> ordenesTrabajo(UUID clienteId, int page, int size) {
     int pageSafe = Math.max(page, 0);
     int sizeSafe = Math.max(size, 1);
@@ -125,19 +122,5 @@ public class ClientesService {
     }
 
     clienteRepo.delete(c);
-  }
-
-  private ClienteResumenDto toResumen(Cliente c) {
-    long totalWos = otRepo.countByCliente_Id(c.getId());
-    var lastOt = otRepo.findTopByCliente_IdOrderByUpdatedAtDesc(c.getId()).orElse(null);
-
-    return new ClienteResumenDto(
-        c.getId(),
-        c.getNombre(),
-        c.getTelefono(),
-        c.getEmail(),
-        totalWos,
-        lastOt != null ? lastOt.getUpdatedAt() : null
-    );
   }
 }
