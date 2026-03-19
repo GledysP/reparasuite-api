@@ -34,6 +34,8 @@ import com.reparasuite.api.repo.EquipoRepo;
 @Service
 public class EquiposService {
 
+  private static final int MAX_PAGE_SIZE = 100;
+
   private final EquipoRepo equipoRepo;
   private final ClienteRepo clienteRepo;
   private final CategoriaEquipoRepo categoriaRepo;
@@ -51,30 +53,28 @@ public class EquiposService {
     this.fallaRepo = fallaRepo;
   }
 
-  public ApiListaResponse<EquipoResumenDto> listar(String clienteId, Boolean activo, int page, int size) {
+  public ApiListaResponse<EquipoResumenDto> listar(String query, String clienteId, Boolean activo, int page, int size) {
     Pageable pageable = PageRequest.of(
         Math.max(page, 0),
-        Math.max(size, 1),
+        Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
         Sort.by(Sort.Direction.ASC, "codigoEquipo")
     );
 
-    Page<Equipo> p;
+    UUID clienteUuid = null;
     if (clienteId != null && !clienteId.isBlank()) {
-      UUID cid = UUID.fromString(clienteId);
-      if (activo == null) {
-        p = equipoRepo.findByCliente_Id(cid, pageable);
-      } else {
-        p = equipoRepo.findByCliente_IdAndEstadoActivo(cid, activo, pageable);
+      try {
+        clienteUuid = UUID.fromString(clienteId.trim());
+      } catch (IllegalArgumentException ex) {
+        throw new BadRequestException("UUID inválido para clienteId: " + clienteId);
       }
-    } else if (activo != null) {
-      if (activo) {
-        p = equipoRepo.findByEstadoActivoTrue(pageable);
-      } else {
-        p = equipoRepo.findAll(pageable);
-      }
-    } else {
-      p = equipoRepo.findAll(pageable);
     }
+
+    Page<Equipo> p = equipoRepo.buscarConHistorial(
+        limpiarNullable(query),
+        clienteUuid,
+        activo,
+        pageable
+    );
 
     return new ApiListaResponse<>(
         p.getContent().stream().map(this::toResumen).toList(),

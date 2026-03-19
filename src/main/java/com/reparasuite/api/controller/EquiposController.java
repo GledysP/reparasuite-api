@@ -30,12 +30,13 @@ public class EquiposController {
 
   @GetMapping
   public ApiListaResponse<EquipoResumenDto> listar(
+      @RequestParam(required = false) String query,
       @RequestParam(required = false) String clienteId,
       @RequestParam(required = false) Boolean activo,
       @RequestParam(defaultValue = "0") int page,
       @RequestParam(defaultValue = "20") int size
   ) {
-    return service.listar(clienteId, activo, page, size);
+    return service.listar(query, clienteId, activo, page, size);
   }
 
   @GetMapping("/{id}")

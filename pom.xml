@@ -60,6 +60,16 @@
       <scope>runtime</scope>
     </dependency>
 
+    <!-- Flyway -->
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+    </dependency>
+
     <!-- OpenAPI -->
     <dependency>
       <groupId>org.springdoc</groupId>
@@ -108,7 +118,7 @@
       <scope>test</scope>
     </dependency>
 
-    <!-- Mockito explícito para fijar versión y usar javaagent en tests -->
+    <!-- Mockito -->
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-core</artifactId>
