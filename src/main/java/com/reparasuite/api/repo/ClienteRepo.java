@@ -18,6 +18,8 @@ public interface ClienteRepo extends JpaRepository<Cliente, UUID> {
 
   Optional<Cliente> findByEmailIgnoreCase(String email);
 
+  boolean existsByEmailIgnoreCase(String email);
+
   @Query("""
       select c
       from Cliente c

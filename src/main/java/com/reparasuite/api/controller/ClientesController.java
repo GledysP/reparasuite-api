@@ -1,14 +1,18 @@
 package com.reparasuite.api.controller;
 
+import java.net.URI;
 import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import com.reparasuite.api.dto.ApiListaResponse;
+import com.reparasuite.api.dto.ClienteCrearRequest;
 import com.reparasuite.api.dto.ClienteOtItemDto;
 import com.reparasuite.api.dto.ClienteResumenDto;
+import com.reparasuite.api.dto.ClienteUpdateRequest;
 import com.reparasuite.api.service.ClientesService;
 
 @RestController
@@ -34,6 +38,22 @@ public class ClientesController {
   @GetMapping("/{id}")
   public ClienteResumenDto obtener(@PathVariable String id) {
     return service.obtener(UUID.fromString(id));
+  }
+
+  @PostMapping
+  public ResponseEntity<ClienteResumenDto> crear(@Validated @RequestBody ClienteCrearRequest req) {
+    ClienteResumenDto creado = service.crear(req);
+    return ResponseEntity
+        .created(URI.create("/api/v1/clientes/" + creado.id()))
+        .body(creado);
+  }
+
+  @PutMapping("/{id}")
+  public ResponseEntity<ClienteResumenDto> actualizar(
+      @PathVariable String id,
+      @Validated @RequestBody ClienteUpdateRequest req
+  ) {
+    return ResponseEntity.ok(service.actualizar(UUID.fromString(id), req));
   }
 
   @GetMapping("/{id}/ordenes-trabajo")
