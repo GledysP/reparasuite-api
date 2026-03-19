@@ -22,6 +22,7 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <mockito.version>5.23.0</mockito.version>
+    <flyway.version>11.14.1</flyway.version>
   </properties>
 
   <dependencies>
@@ -149,6 +150,27 @@
           <argLine>
             -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
           </argLine>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.flywaydb</groupId>
+        <artifactId>flyway-maven-plugin</artifactId>
+        <version>${flyway.version}</version>
+        <configuration>
+          <url>jdbc:postgresql://localhost:5432/reparasuite</url>
+          <user>postgres</user>
+          <password>123456</password>
+          <schemas>
+            <schema>public</schema>
+          </schemas>
+          <defaultSchema>public</defaultSchema>
+          <locations>
+            <location>filesystem:src/main/resources/db/migration</location>
+          </locations>
+          <baselineOnMigrate>true</baselineOnMigrate>
+          <baselineVersion>1</baselineVersion>
+          <validateOnMigrate>true</validateOnMigrate>
         </configuration>
       </plugin>
     </plugins>
