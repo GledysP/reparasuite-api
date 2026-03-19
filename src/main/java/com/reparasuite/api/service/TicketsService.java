@@ -39,6 +39,8 @@ import com.reparasuite.api.repo.TicketSolicitudRepo;
 @Service
 public class TicketsService {
 
+  private static final int MAX_PAGE_SIZE = 100;
+
   private final TicketSolicitudRepo ticketRepo;
   private final TicketMensajeRepo msgRepo;
   private final TicketFotoRepo fotoRepo;
@@ -70,7 +72,13 @@ public class TicketsService {
 
   public ApiListaResponse<TicketListaItemDto> listar(int page, int size) {
     UUID clienteId = requireClienteId();
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
+
+    Pageable pageable = PageRequest.of(
+        Math.max(page, 0),
+        Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
+        Sort.by(Sort.Direction.DESC, "updatedAt")
+    );
+
     Page<TicketSolicitud> p = ticketRepo.findByCliente_Id(clienteId, pageable);
 
     List<TicketListaItemDto> items = p.getContent().stream()
@@ -182,7 +190,12 @@ public class TicketsService {
   public ApiListaResponse<TicketBackofficeListaItemDto> listarBackoffice(int page, int size) {
     requireBackofficeRole();
 
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
+    Pageable pageable = PageRequest.of(
+        Math.max(page, 0),
+        Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
+        Sort.by(Sort.Direction.DESC, "updatedAt")
+    );
+
     Page<TicketSolicitud> p = ticketRepo.findAll(pageable);
 
     List<TicketBackofficeListaItemDto> items = p.getContent().stream()

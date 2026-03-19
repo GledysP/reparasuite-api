@@ -34,6 +34,8 @@ import com.reparasuite.api.repo.InventarioMovimientoRepo;
 @Service
 public class InventarioService {
 
+  private static final int MAX_PAGE_SIZE = 100;
+
   private final InventarioItemRepo itemRepo;
   private final InventarioCategoriaRepo categoriaRepo;
   private final InventarioMovimientoRepo movimientoRepo;
@@ -51,7 +53,7 @@ public class InventarioService {
   public ApiListaResponse<InventarioItemResumenDto> listar(Boolean activo, int page, int size) {
     Pageable pageable = PageRequest.of(
         Math.max(page, 0),
-        Math.max(size, 1),
+        Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
         Sort.by(Sort.Direction.ASC, "nombre")
     );
 

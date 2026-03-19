@@ -78,6 +78,8 @@ import com.reparasuite.api.repo.UsuarioRepo;
 @Service
 public class OrdenesTrabajoService {
 
+  private static final int MAX_PAGE_SIZE = 100;
+
   private final OrdenTrabajoRepo otRepo;
   private final ClienteRepo clienteRepo;
   private final UsuarioRepo usuarioRepo;
@@ -156,7 +158,7 @@ public class OrdenesTrabajoService {
     requireBackoffice();
 
     int pageSafe = Math.max(page, 0);
-    int sizeSafe = Math.max(size, 1);
+    int sizeSafe = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
 
     Pageable pageable = PageRequest.of(
         pageSafe,
