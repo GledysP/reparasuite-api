@@ -70,6 +70,8 @@ public class SeguridadConfig {
         .authorizeHttpRequests(auth -> auth
             .requestMatchers("/api/v1/auth/**").permitAll()
             .requestMatchers("/api/v1/portal/auth/**").permitAll()
+            .requestMatchers("/actuator/health").permitAll()
+            .requestMatchers("/actuator/health/**").permitAll()
             .requestMatchers("/v3/api-docs/**").permitAll()
             .requestMatchers("/swagger-ui/**").permitAll()
             .requestMatchers("/swagger-ui.html").permitAll()

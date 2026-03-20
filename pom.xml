@@ -71,6 +71,12 @@
       <artifactId>flyway-database-postgresql</artifactId>
     </dependency>
 
+    <!-- Actuator -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
     <!-- OpenAPI -->
     <dependency>
       <groupId>org.springdoc</groupId>

@@ -2,6 +2,8 @@ package com.reparasuite.api.controller;
 
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -28,6 +30,8 @@ import com.reparasuite.api.service.SecureUploadService;
 
 @RestController
 public class ArchivoController {
+
+  private static final Logger log = LoggerFactory.getLogger(ArchivoController.class);
 
   private final SecureUploadService secureUploadService;
   private final OrdenTrabajoRepo ordenTrabajoRepo;
@@ -67,11 +71,14 @@ public class ArchivoController {
 
     var auth = authContextService.current();
     if (auth.isCliente() && !foto.isVisibleCliente()) {
+      log.warn("Intento de acceso denegado a foto OT otId={} actorId={} rol={}", otId, auth.id(), auth.rol());
       throw new ForbiddenException("No autorizado");
     }
 
     Resource resource = secureUploadService.loadOtImage(ot.getId(), filename);
     String contentType = secureUploadService.probeContentType(resource, filename);
+
+    log.info("Descarga archivo OT permitida otId={} actorId={} rol={} file={}", otId, auth.id(), auth.rol(), filename);
 
     return ResponseEntity.ok()
         .contentType(MediaType.parseMediaType(contentType))
@@ -93,6 +100,8 @@ public class ArchivoController {
         .orElseThrow(() -> new NotFoundException("Archivo no encontrado"));
 
     if (!pago.getOt().getId().equals(ot.getId())) {
+      var auth = authContextService.current();
+      log.warn("Intento de acceso denegado a comprobante pago otId={} actorId={} rol={}", otId, auth.id(), auth.rol());
       throw new ForbiddenException("No autorizado");
     }
 
@@ -103,6 +112,9 @@ public class ArchivoController {
         "application/pdf".equalsIgnoreCase(contentType)
             ? ContentDisposition.attachment().filename(filename).build()
             : ContentDisposition.inline().filename(filename).build();
+
+    var auth = authContextService.current();
+    log.info("Descarga comprobante permitida otId={} actorId={} rol={} file={}", otId, auth.id(), auth.rol(), filename);
 
     return ResponseEntity.ok()
         .contentType(MediaType.parseMediaType(contentType))
@@ -121,11 +133,16 @@ public class ArchivoController {
         .orElseThrow(() -> new NotFoundException("Archivo no encontrado"));
 
     if (!foto.getTicket().getId().equals(ticket.getId())) {
+      var auth = authContextService.current();
+      log.warn("Intento de acceso denegado a foto ticket ticketId={} actorId={} rol={}", ticketId, auth.id(), auth.rol());
       throw new ForbiddenException("No autorizado");
     }
 
     Resource resource = secureUploadService.loadTicketImage(ticket.getId(), filename);
     String contentType = secureUploadService.probeContentType(resource, filename);
+
+    var auth = authContextService.current();
+    log.info("Descarga archivo ticket permitida ticketId={} actorId={} rol={} file={}", ticketId, auth.id(), auth.rol(), filename);
 
     return ResponseEntity.ok()
         .contentType(MediaType.parseMediaType(contentType))
@@ -150,6 +167,7 @@ public class ArchivoController {
       return ot;
     }
 
+    log.warn("Intento de acceso denegado a OT otId={} actorId={} rol={}", otId, auth.id(), auth.rol());
     throw new ForbiddenException("No autorizado");
   }
 
@@ -167,6 +185,7 @@ public class ArchivoController {
       return ticket;
     }
 
+    log.warn("Intento de acceso denegado a ticket ticketId={} actorId={} rol={}", ticketId, auth.id(), auth.rol());
     throw new ForbiddenException("No autorizado");
   }
 }

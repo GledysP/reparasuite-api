@@ -15,6 +15,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.reparasuite.api.security.RequestCorrelationFilter;
+
 import jakarta.servlet.http.HttpServletRequest;
 
 @RestControllerAdvice
@@ -30,7 +32,8 @@ public class GlobalExceptionHandler {
     HttpStatus status = HttpStatus.valueOf(ex.getStatus());
 
     log.warn(
-        "API exception {} {} -> {} {}",
+        "API exception requestId={} {} {} -> {} {}",
+        requestId(request),
         request.getMethod(),
         request.getRequestURI(),
         status.value(),
@@ -54,7 +57,8 @@ public class GlobalExceptionHandler {
       HttpServletRequest request
   ) {
     log.warn(
-        "Rate limit {} {} -> 429 {}",
+        "Rate limit requestId={} {} {} -> 429 {}",
+        requestId(request),
         request.getMethod(),
         request.getRequestURI(),
         ex.getMessage()
@@ -108,7 +112,8 @@ public class GlobalExceptionHandler {
     }
 
     log.warn(
-        "Bad request {} {} -> 400 {}",
+        "Bad request requestId={} {} {} -> 400 {}",
+        requestId(request),
         request.getMethod(),
         request.getRequestURI(),
         message
@@ -140,7 +145,8 @@ public class GlobalExceptionHandler {
         : "No autorizado";
 
     log.warn(
-        "Forbidden {} {} -> 403 {}",
+        "Forbidden requestId={} {} {} -> 403 {}",
+        requestId(request),
         request.getMethod(),
         request.getRequestURI(),
         message
@@ -163,7 +169,8 @@ public class GlobalExceptionHandler {
       HttpServletRequest request
   ) {
     log.error(
-        "Unexpected error {} {} -> 500",
+        "Unexpected error requestId={} {} {} -> 500",
+        requestId(request),
         request.getMethod(),
         request.getRequestURI(),
         ex
@@ -178,5 +185,10 @@ public class GlobalExceptionHandler {
             request.getRequestURI()
         )
     );
+  }
+
+  private String requestId(HttpServletRequest request) {
+    Object value = request.getAttribute(RequestCorrelationFilter.REQUEST_ID_ATTR);
+    return value == null ? "n/a" : String.valueOf(value);
   }
 }
