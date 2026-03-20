@@ -8,6 +8,7 @@ import com.reparasuite.api.dto.PortalLoginRequest;
 import com.reparasuite.api.dto.PortalLoginResponse;
 import com.reparasuite.api.dto.PortalRegisterRequest;
 import com.reparasuite.api.dto.PortalRegisterResponse;
+import com.reparasuite.api.service.ClientIpService;
 import com.reparasuite.api.service.LoginRateLimitService;
 import com.reparasuite.api.service.PortalAuthService;
 
@@ -19,10 +20,16 @@ public class PortalAuthController {
 
   private final PortalAuthService service;
   private final LoginRateLimitService rateLimitService;
+  private final ClientIpService clientIpService;
 
-  public PortalAuthController(PortalAuthService service, LoginRateLimitService rateLimitService) {
+  public PortalAuthController(
+      PortalAuthService service,
+      LoginRateLimitService rateLimitService,
+      ClientIpService clientIpService
+  ) {
     this.service = service;
     this.rateLimitService = rateLimitService;
+    this.clientIpService = clientIpService;
   }
 
   @PostMapping("/login")
@@ -30,7 +37,7 @@ public class PortalAuthController {
       @Validated @RequestBody PortalLoginRequest req,
       HttpServletRequest request
   ) {
-    String ip = clientIp(request);
+    String ip = clientIpService.resolve(request);
     String principal = req.email();
 
     rateLimitService.assertAllowed("PORTAL_LOGIN", principal, ip);
@@ -49,16 +56,5 @@ public class PortalAuthController {
   public ResponseEntity<PortalRegisterResponse> register(@Validated @RequestBody PortalRegisterRequest req) {
     service.register(req.nombre(), req.email(), req.password());
     return ResponseEntity.ok(new PortalRegisterResponse("Cuenta creada correctamente"));
-  }
-
-  private String clientIp(HttpServletRequest request) {
-    String forwarded = request.getHeader("X-Forwarded-For");
-    if (forwarded != null && !forwarded.isBlank()) {
-      String[] parts = forwarded.split(",");
-      if (parts.length > 0 && !parts[0].trim().isBlank()) {
-        return parts[0].trim();
-      }
-    }
-    return request.getRemoteAddr();
   }
 }

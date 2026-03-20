@@ -14,7 +14,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 @Configuration
 public class CorsConfig {
 
-  @Value("${reparasuite.cors.allowed-origin-patterns:http://localhost:*,http://127.0.0.1:*}")
+  @Value("${reparasuite.cors.allowed-origin-patterns:}")
   private String allowedOriginPatternsRaw;
 
   @Value("${reparasuite.cors.allowed-methods:GET,POST,PUT,PATCH,DELETE,OPTIONS}")
@@ -34,28 +34,28 @@ public class CorsConfig {
 
   @Bean
   public CorsConfigurationSource corsConfigurationSource() {
+    List<String> origins = parseCsv(allowedOriginPatternsRaw);
+
+    if (origins.isEmpty()) {
+      throw new IllegalStateException(
+          "La propiedad reparasuite.cors.allowed-origin-patterns debe configurarse explícitamente"
+      );
+    }
+
     CorsConfiguration cfg = new CorsConfiguration();
-
-    cfg.setAllowedOriginPatterns(parseCsv(
-        allowedOriginPatternsRaw,
-        List.of("http://localhost:*", "http://127.0.0.1:*")
-    ));
-
-    cfg.setAllowedMethods(parseCsv(
+    cfg.setAllowedOriginPatterns(origins);
+    cfg.setAllowedMethods(parseCsvOrDefault(
         allowedMethodsRaw,
         List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
     ));
-
-    cfg.setAllowedHeaders(parseCsv(
+    cfg.setAllowedHeaders(parseCsvOrDefault(
         allowedHeadersRaw,
         List.of("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin")
     ));
-
-    cfg.setExposedHeaders(parseCsv(
+    cfg.setExposedHeaders(parseCsvOrDefault(
         exposedHeadersRaw,
         List.of("Authorization")
     ));
-
     cfg.setAllowCredentials(allowCredentials);
     cfg.setMaxAge(maxAge);
 
@@ -64,16 +64,19 @@ public class CorsConfig {
     return source;
   }
 
-  private List<String> parseCsv(String raw, List<String> fallback) {
+  private List<String> parseCsv(String raw) {
     if (!StringUtils.hasText(raw)) {
-      return fallback;
+      return List.of();
     }
 
-    List<String> values = Arrays.stream(raw.split(","))
+    return Arrays.stream(raw.split(","))
         .map(String::trim)
         .filter(StringUtils::hasText)
         .toList();
+  }
 
+  private List<String> parseCsvOrDefault(String raw, List<String> fallback) {
+    List<String> values = parseCsv(raw);
     return values.isEmpty() ? fallback : values;
   }
 }

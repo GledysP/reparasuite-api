@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.*;
 import com.reparasuite.api.dto.LoginRequest;
 import com.reparasuite.api.dto.LoginResponse;
 import com.reparasuite.api.service.AuthService;
+import com.reparasuite.api.service.ClientIpService;
 import com.reparasuite.api.service.LoginRateLimitService;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,10 +18,16 @@ public class AuthController {
 
   private final AuthService authService;
   private final LoginRateLimitService rateLimitService;
+  private final ClientIpService clientIpService;
 
-  public AuthController(AuthService authService, LoginRateLimitService rateLimitService) {
+  public AuthController(
+      AuthService authService,
+      LoginRateLimitService rateLimitService,
+      ClientIpService clientIpService
+  ) {
     this.authService = authService;
     this.rateLimitService = rateLimitService;
+    this.clientIpService = clientIpService;
   }
 
   @PostMapping("/login")
@@ -28,7 +35,7 @@ public class AuthController {
       @Validated @RequestBody LoginRequest req,
       HttpServletRequest request
   ) {
-    String ip = clientIp(request);
+    String ip = clientIpService.resolve(request);
     String principal = req.usuario();
 
     rateLimitService.assertAllowed("BACKOFFICE_LOGIN", principal, ip);
@@ -41,16 +48,5 @@ public class AuthController {
       rateLimitService.recordFailure("BACKOFFICE_LOGIN", principal, ip);
       throw ex;
     }
-  }
-
-  private String clientIp(HttpServletRequest request) {
-    String forwarded = request.getHeader("X-Forwarded-For");
-    if (forwarded != null && !forwarded.isBlank()) {
-      String[] parts = forwarded.split(",");
-      if (parts.length > 0 && !parts[0].trim().isBlank()) {
-        return parts[0].trim();
-      }
-    }
-    return request.getRemoteAddr();
   }
 }

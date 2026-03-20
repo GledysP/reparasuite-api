@@ -58,6 +58,15 @@ public class SeguridadConfig {
     http
         .csrf(csrf -> csrf.disable())
         .cors(Customizer.withDefaults())
+        .headers(headers -> headers
+            .contentTypeOptions(Customizer.withDefaults())
+            .frameOptions(frame -> frame.sameOrigin())
+            .referrerPolicy(ref -> ref.policy(
+                org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER
+            ))
+            .cacheControl(Customizer.withDefaults())
+            .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none';"))
+        )
         .authorizeHttpRequests(auth -> auth
             .requestMatchers("/api/v1/auth/**").permitAll()
             .requestMatchers("/api/v1/portal/auth/**").permitAll()
