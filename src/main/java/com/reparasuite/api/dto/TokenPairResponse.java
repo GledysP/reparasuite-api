@@ -1,9 +1,8 @@
 package com.reparasuite.api.dto;
 
-public record LoginResponse(
+public record TokenPairResponse(
     String accessToken,
     String refreshToken,
-    long expiresInSeconds,
-    UsuarioResumenDto usuario
+    long expiresInSeconds
 ) {
 }

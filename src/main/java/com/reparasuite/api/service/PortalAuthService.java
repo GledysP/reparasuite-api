@@ -1,45 +1,43 @@
 package com.reparasuite.api.service;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.Date;
 import java.util.Locale;
+import java.util.Map;
 
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.reparasuite.api.dto.PortalLoginResponse;
 import com.reparasuite.api.exception.BadRequestException;
 import com.reparasuite.api.exception.ConflictException;
 import com.reparasuite.api.exception.UnauthorizedException;
 import com.reparasuite.api.model.Cliente;
+import com.reparasuite.api.model.RefreshToken;
 import com.reparasuite.api.repo.ClienteRepo;
-
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 
 @Service
 public class PortalAuthService {
 
+  private static final String SUBJECT_TYPE = "CLIENTE";
+
   private final ClienteRepo clienteRepo;
   private final PasswordEncoder encoder;
+  private final AccessTokenService accessTokenService;
+  private final RefreshTokenService refreshTokenService;
 
-  @Value("${reparasuite.jwt.secret}")
-  private String secret;
-
-  @Value("${reparasuite.jwt.issuer}")
-  private String issuer;
-
-  @Value("${reparasuite.jwt.exp-min}")
-  private long expMin;
-
-  public PortalAuthService(ClienteRepo clienteRepo, PasswordEncoder encoder) {
+  public PortalAuthService(
+      ClienteRepo clienteRepo,
+      PasswordEncoder encoder,
+      AccessTokenService accessTokenService,
+      RefreshTokenService refreshTokenService
+  ) {
     this.clienteRepo = clienteRepo;
     this.encoder = encoder;
+    this.accessTokenService = accessTokenService;
+    this.refreshTokenService = refreshTokenService;
   }
 
-  public String login(String email, String password) {
+  public PortalLoginResponse login(String email, String password, String ip, String userAgent) {
     String emailNorm = normalizarEmail(email);
 
     Cliente c = clienteRepo.findByEmailIgnoreCase(emailNorm)
@@ -50,20 +48,39 @@ public class PortalAuthService {
       throw new UnauthorizedException("Credenciales inválidas");
     }
 
-    Instant now = Instant.now();
-    Instant exp = now.plusSeconds(expMin * 60);
-    var key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    String accessToken = createAccessToken(c);
+    String refreshToken = refreshTokenService.createToken(c.getId(), SUBJECT_TYPE, ip, userAgent);
 
-    return Jwts.builder()
-        .issuer(issuer)
-        .subject(c.getId().toString())
-        .issuedAt(Date.from(now))
-        .expiration(Date.from(exp))
-        .claim("rol", "CLIENTE")
-        .claim("email", c.getEmail())
-        .claim("nombre", c.getNombre())
-        .signWith(key, Jwts.SIG.HS256)
-        .compact();
+    return new PortalLoginResponse(
+        accessToken,
+        refreshToken,
+        accessTokenService.getExpiresInSeconds()
+    );
+  }
+
+  public PortalLoginResponse refresh(String rawRefreshToken, String ip, String userAgent) {
+    RefreshToken rotated = refreshTokenService.rotateToken(rawRefreshToken, ip, userAgent);
+
+    if (!SUBJECT_TYPE.equalsIgnoreCase(rotated.getSubjectType())) {
+      throw new UnauthorizedException("Refresh token inválido para cliente");
+    }
+
+    Cliente c = clienteRepo.findById(rotated.getSubjectId())
+        .filter(Cliente::isPortalActivo)
+        .orElseThrow(() -> new UnauthorizedException("Cliente no válido"));
+
+    String accessToken = createAccessToken(c);
+    String newRawRefreshToken = rotated.getReplacedByTokenHash();
+
+    return new PortalLoginResponse(
+        accessToken,
+        newRawRefreshToken,
+        accessTokenService.getExpiresInSeconds()
+    );
+  }
+
+  public void logout(String rawRefreshToken) {
+    refreshTokenService.revokeToken(rawRefreshToken);
   }
 
   @Transactional
@@ -112,6 +129,17 @@ public class PortalAuthService {
     cliente.setPasswordHashPortal(encoder.encode(passwordNorm));
 
     clienteRepo.save(cliente);
+  }
+
+  private String createAccessToken(Cliente c) {
+    return accessTokenService.createToken(
+        c.getId(),
+        Map.of(
+            "rol", "CLIENTE",
+            "email", c.getEmail(),
+            "nombre", c.getNombre()
+        )
+    );
   }
 
   private String limpiar(String value) {

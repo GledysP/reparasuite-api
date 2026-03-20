@@ -1,43 +1,41 @@
 package com.reparasuite.api.service;
 
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.Date;
+import java.util.Map;
 
-import org.springframework.beans.factory.annotation.Value;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.reparasuite.api.dto.LoginResponse;
 import com.reparasuite.api.dto.UsuarioResumenDto;
 import com.reparasuite.api.exception.UnauthorizedException;
+import com.reparasuite.api.model.RefreshToken;
 import com.reparasuite.api.model.Usuario;
 import com.reparasuite.api.repo.UsuarioRepo;
-
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 
 @Service
 public class AuthService {
 
+  private static final String SUBJECT_TYPE = "BACKOFFICE";
+
   private final UsuarioRepo usuarioRepo;
   private final PasswordEncoder passwordEncoder;
+  private final AccessTokenService accessTokenService;
+  private final RefreshTokenService refreshTokenService;
 
-  @Value("${reparasuite.jwt.secret}")
-  private String secret;
-
-  @Value("${reparasuite.jwt.issuer}")
-  private String issuer;
-
-  @Value("${reparasuite.jwt.exp-min}")
-  private long expMin;
-
-  public AuthService(UsuarioRepo usuarioRepo, PasswordEncoder passwordEncoder) {
+  public AuthService(
+      UsuarioRepo usuarioRepo,
+      PasswordEncoder passwordEncoder,
+      AccessTokenService accessTokenService,
+      RefreshTokenService refreshTokenService
+  ) {
     this.usuarioRepo = usuarioRepo;
     this.passwordEncoder = passwordEncoder;
+    this.accessTokenService = accessTokenService;
+    this.refreshTokenService = refreshTokenService;
   }
 
-  public LoginResponse login(String usuario, String password) {
+  public LoginResponse login(String usuario, String password, String ip, String userAgent) {
     Usuario u = usuarioRepo.findByUsuario(usuario)
         .filter(Usuario::isActivo)
         .orElseThrow(() -> new UnauthorizedException("Credenciales inválidas"));
@@ -46,23 +44,52 @@ public class AuthService {
       throw new UnauthorizedException("Credenciales inválidas");
     }
 
-    Instant now = Instant.now();
-    Instant exp = now.plusSeconds(expMin * 60);
+    String accessToken = createAccessToken(u);
+    String refreshToken = refreshTokenService.createToken(u.getId(), SUBJECT_TYPE, ip, userAgent);
 
-    var key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    return new LoginResponse(
+        accessToken,
+        refreshToken,
+        accessTokenService.getExpiresInSeconds(),
+        toDto(u)
+    );
+  }
 
-    String token = Jwts.builder()
-        .issuer(issuer)
-        .subject(u.getId().toString())
-        .issuedAt(Date.from(now))
-        .expiration(Date.from(exp))
-        .claim("usuario", u.getUsuario())
-        .claim("nombre", u.getNombre())
-        .claim("rol", u.getRol().name())
-        .signWith(key, Jwts.SIG.HS256)
-        .compact();
+  public LoginResponse refresh(String rawRefreshToken, String ip, String userAgent) {
+    RefreshToken rotated = refreshTokenService.rotateToken(rawRefreshToken, ip, userAgent);
 
-    return new LoginResponse(token, toDto(u));
+    if (!SUBJECT_TYPE.equalsIgnoreCase(rotated.getSubjectType())) {
+      throw new UnauthorizedException("Refresh token inválido para backoffice");
+    }
+
+    Usuario u = usuarioRepo.findById(rotated.getSubjectId())
+        .filter(Usuario::isActivo)
+        .orElseThrow(() -> new UnauthorizedException("Usuario no válido"));
+
+    String accessToken = createAccessToken(u);
+    String newRawRefreshToken = rotated.getReplacedByTokenHash();
+
+    return new LoginResponse(
+        accessToken,
+        newRawRefreshToken,
+        accessTokenService.getExpiresInSeconds(),
+        toDto(u)
+    );
+  }
+
+  public void logout(String rawRefreshToken) {
+    refreshTokenService.revokeToken(rawRefreshToken);
+  }
+
+  private String createAccessToken(Usuario u) {
+    return accessTokenService.createToken(
+        u.getId(),
+        Map.of(
+            "usuario", u.getUsuario(),
+            "nombre", u.getNombre(),
+            "rol", u.getRol().name()
+        )
+    );
   }
 
   private UsuarioResumenDto toDto(Usuario u) {

@@ -4,10 +4,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import com.reparasuite.api.dto.LogoutRequest;
 import com.reparasuite.api.dto.PortalLoginRequest;
 import com.reparasuite.api.dto.PortalLoginResponse;
 import com.reparasuite.api.dto.PortalRegisterRequest;
 import com.reparasuite.api.dto.PortalRegisterResponse;
+import com.reparasuite.api.dto.RefreshTokenRequest;
 import com.reparasuite.api.service.ClientIpService;
 import com.reparasuite.api.service.LoginRateLimitService;
 import com.reparasuite.api.service.PortalAuthService;
@@ -39,17 +41,34 @@ public class PortalAuthController {
   ) {
     String ip = clientIpService.resolve(request);
     String principal = req.email();
+    String userAgent = request.getHeader("User-Agent");
 
     rateLimitService.assertAllowed("PORTAL_LOGIN", principal, ip);
 
     try {
-      String token = service.login(req.email(), req.password());
+      PortalLoginResponse response = service.login(req.email(), req.password(), ip, userAgent);
       rateLimitService.recordSuccess("PORTAL_LOGIN", principal, ip);
-      return ResponseEntity.ok(new PortalLoginResponse(token));
+      return ResponseEntity.ok(response);
     } catch (RuntimeException ex) {
       rateLimitService.recordFailure("PORTAL_LOGIN", principal, ip);
       throw ex;
     }
+  }
+
+  @PostMapping("/refresh")
+  public ResponseEntity<PortalLoginResponse> refresh(
+      @Validated @RequestBody RefreshTokenRequest req,
+      HttpServletRequest request
+  ) {
+    String ip = clientIpService.resolve(request);
+    String userAgent = request.getHeader("User-Agent");
+    return ResponseEntity.ok(service.refresh(req.refreshToken(), ip, userAgent));
+  }
+
+  @PostMapping("/logout")
+  public ResponseEntity<Void> logout(@Validated @RequestBody LogoutRequest req) {
+    service.logout(req.refreshToken());
+    return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/register")
