@@ -38,7 +38,7 @@ public class LoginRateLimitService {
       }
 
       log.warn(
-          "Login bloqueado scope={} principal={} ip={} retryAfterSeconds={}",
+          "Bloqueado scope={} principal={} ip={} retryAfterSeconds={}",
           normalize(scope), normalize(principal), normalize(ip), retryAfterSeconds
       );
 
@@ -64,12 +64,12 @@ public class LoginRateLimitService {
       if (state.failures >= cfg.maxFailures()) {
         state.blockedUntil = now.plus(cfg.blockDuration());
         log.warn(
-            "Login rate-limited scope={} principal={} ip={} failures={} blockedUntil={}",
+            "Rate limited scope={} principal={} ip={} failures={} blockedUntil={}",
             normalize(scope), normalize(principal), normalize(ip), state.failures, state.blockedUntil
         );
       } else {
         log.info(
-            "Login failure scope={} principal={} ip={} failures={}",
+            "Fallo auth scope={} principal={} ip={} failures={}",
             normalize(scope), normalize(principal), normalize(ip), state.failures
         );
       }
@@ -83,10 +83,7 @@ public class LoginRateLimitService {
   }
 
   private String key(String scope, String principal, String ip) {
-    String p = normalize(principal);
-    String i = normalize(ip);
-    String s = normalize(scope);
-    return s + "|" + p + "|" + i;
+    return normalize(scope) + "|" + normalize(principal) + "|" + normalize(ip);
   }
 
   private String normalize(String value) {
@@ -101,14 +98,8 @@ public class LoginRateLimitService {
     store.entrySet().removeIf(entry -> {
       AttemptState state = entry.getValue();
       if (state == null) return true;
-
-      if (!entry.getKey().startsWith(normalize(scope) + "|")) {
-        return false;
-      }
-
-      if (state.blockedUntil != null && state.blockedUntil.isAfter(now)) {
-        return false;
-      }
+      if (!entry.getKey().startsWith(normalize(scope) + "|")) return false;
+      if (state.blockedUntil != null && state.blockedUntil.isAfter(now)) return false;
 
       Instant ref = state.lastFailureAt != null ? state.lastFailureAt : now;
       return ref.plus(cfg.staleTtl()).isBefore(now);
@@ -117,10 +108,15 @@ public class LoginRateLimitService {
 
   private ScopeConfig configFor(String scope) {
     String normalized = normalize(scope);
-    LoginRateLimitProperties.Scope cfg =
-        "portal_login".equals(normalized)
-            ? properties.getPortal()
-            : properties.getBackoffice();
+
+    LoginRateLimitProperties.Scope cfg;
+    if ("portal_login".equals(normalized)) {
+      cfg = properties.getPortal();
+    } else if ("refresh_token".equals(normalized)) {
+      cfg = properties.getRefresh();
+    } else {
+      cfg = properties.getBackoffice();
+    }
 
     int maxFailures = Math.max(cfg.getMaxFailures(), 1);
     Duration blockDuration = Duration.ofMinutes(Math.max(cfg.getBlockDurationMinutes(), 1));

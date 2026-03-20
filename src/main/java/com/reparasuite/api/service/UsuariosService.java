@@ -21,12 +21,20 @@ import com.reparasuite.api.repo.UsuarioRepo;
 @Service
 public class UsuariosService {
 
+  private static final String SUBJECT_TYPE_BACKOFFICE = "BACKOFFICE";
+
   private final UsuarioRepo usuarioRepo;
   private final PasswordEncoder encoder;
+  private final RefreshTokenService refreshTokenService;
 
-  public UsuariosService(UsuarioRepo usuarioRepo, PasswordEncoder encoder) {
+  public UsuariosService(
+      UsuarioRepo usuarioRepo,
+      PasswordEncoder encoder,
+      RefreshTokenService refreshTokenService
+  ) {
     this.usuarioRepo = usuarioRepo;
     this.encoder = encoder;
+    this.refreshTokenService = refreshTokenService;
   }
 
   public List<UsuarioResumenDto> listar(boolean activos) {
@@ -106,10 +114,27 @@ public class UsuariosService {
   }
 
   @Transactional
+  public void resetPassword(UUID id, String rawPassword) {
+    Usuario u = usuarioRepo.findById(id)
+        .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
+
+    String password = normalizeRequired(rawPassword, "password");
+    if (password.length() < 8) {
+      throw new BadRequestException("La contraseña debe tener al menos 8 caracteres");
+    }
+
+    u.setPasswordHash(encoder.encode(password));
+    usuarioRepo.save(u);
+
+    refreshTokenService.revokeAllBySubject(u.getId(), SUBJECT_TYPE_BACKOFFICE);
+  }
+
+  @Transactional
   public void eliminar(UUID id) {
     if (!usuarioRepo.existsById(id)) {
       throw new NotFoundException("Usuario no encontrado");
     }
+    refreshTokenService.revokeAllBySubject(id, SUBJECT_TYPE_BACKOFFICE);
     usuarioRepo.deleteById(id);
   }
 

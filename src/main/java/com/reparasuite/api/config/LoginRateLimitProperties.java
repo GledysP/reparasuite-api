@@ -7,6 +7,7 @@ public class LoginRateLimitProperties {
 
   private Scope backoffice = new Scope();
   private Scope portal = new Scope();
+  private Scope refresh = new Scope();
 
   public Scope getBackoffice() {
     return backoffice;
@@ -22,6 +23,14 @@ public class LoginRateLimitProperties {
 
   public void setPortal(Scope portal) {
     this.portal = portal;
+  }
+
+  public Scope getRefresh() {
+    return refresh;
+  }
+
+  public void setRefresh(Scope refresh) {
+    this.refresh = refresh;
   }
 
   public static class Scope {

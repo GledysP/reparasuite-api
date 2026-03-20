@@ -102,6 +102,16 @@ public class RefreshTokenService {
     });
   }
 
+  @Transactional
+  public void revokeAllBySubject(UUID subjectId, String subjectType) {
+    refreshTokenRepo.findBySubjectIdAndSubjectTypeAndRevokedAtIsNull(subjectId, subjectType)
+        .forEach(token -> {
+          token.setRevokedAt(OffsetDateTime.now());
+          token.setLastUsedAt(OffsetDateTime.now());
+          refreshTokenRepo.save(token);
+        });
+  }
+
   @Transactional(readOnly = true)
   public RefreshToken getValidToken(String rawRefreshToken) {
     String hash = sha256(rawRefreshToken);
