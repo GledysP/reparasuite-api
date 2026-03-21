@@ -113,7 +113,7 @@ public class PortalAuthController {
 
   @PostMapping("/register")
   public ResponseEntity<PortalRegisterResponse> register(@Validated @RequestBody PortalRegisterRequest req) {
-    service.register(req.nombre(), req.email(), req.password());
+    service.register(req.nombre(), req.email(), req.password(), req.telefono());
     return ResponseEntity.ok(new PortalRegisterResponse("Cuenta creada correctamente"));
   }
 }

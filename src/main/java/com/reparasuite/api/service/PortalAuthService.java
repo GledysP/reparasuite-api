@@ -1,8 +1,11 @@
 package com.reparasuite.api.service;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Date;
 import java.util.Locale;
-import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,28 +15,36 @@ import com.reparasuite.api.exception.BadRequestException;
 import com.reparasuite.api.exception.ConflictException;
 import com.reparasuite.api.exception.UnauthorizedException;
 import com.reparasuite.api.model.Cliente;
-import com.reparasuite.api.model.RefreshToken;
 import com.reparasuite.api.repo.ClienteRepo;
+
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 
 @Service
 public class PortalAuthService {
 
-  private static final String SUBJECT_TYPE = "CLIENTE";
+  private static final String SUBJECT_TYPE_CLIENTE = "CLIENTE";
 
   private final ClienteRepo clienteRepo;
   private final PasswordEncoder encoder;
-  private final AccessTokenService accessTokenService;
   private final RefreshTokenService refreshTokenService;
+
+  @Value("${reparasuite.jwt.secret}")
+  private String secret;
+
+  @Value("${reparasuite.jwt.issuer}")
+  private String issuer;
+
+  @Value("${reparasuite.jwt.exp-min}")
+  private long expMin;
 
   public PortalAuthService(
       ClienteRepo clienteRepo,
       PasswordEncoder encoder,
-      AccessTokenService accessTokenService,
       RefreshTokenService refreshTokenService
   ) {
     this.clienteRepo = clienteRepo;
     this.encoder = encoder;
-    this.accessTokenService = accessTokenService;
     this.refreshTokenService = refreshTokenService;
   }
 
@@ -48,34 +59,57 @@ public class PortalAuthService {
       throw new UnauthorizedException("Credenciales inválidas");
     }
 
-    String accessToken = createAccessToken(c);
-    String refreshToken = refreshTokenService.createToken(c.getId(), SUBJECT_TYPE, ip, userAgent);
+    Instant now = Instant.now();
+    Instant exp = now.plusSeconds(expMin * 60);
+    var key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
 
-    return new PortalLoginResponse(
-        accessToken,
-        refreshToken,
-        accessTokenService.getExpiresInSeconds()
+    String accessToken = Jwts.builder()
+        .issuer(issuer)
+        .subject(c.getId().toString())
+        .issuedAt(Date.from(now))
+        .expiration(Date.from(exp))
+        .claim("rol", "CLIENTE")
+        .claim("email", c.getEmail())
+        .claim("nombre", c.getNombre())
+        .signWith(key, Jwts.SIG.HS256)
+        .compact();
+
+    String refreshToken = refreshTokenService.createToken(
+        c.getId(),
+        SUBJECT_TYPE_CLIENTE,
+        ip,
+        userAgent
     );
+
+    return new PortalLoginResponse(accessToken, refreshToken, expMin * 60);
   }
 
   public PortalLoginResponse refresh(String rawRefreshToken, String ip, String userAgent) {
-    RefreshToken rotated = refreshTokenService.rotateToken(rawRefreshToken, ip, userAgent);
-
-    if (!SUBJECT_TYPE.equalsIgnoreCase(rotated.getSubjectType())) {
-      throw new UnauthorizedException("Refresh token inválido para cliente");
-    }
+    var rotated = refreshTokenService.rotateToken(rawRefreshToken, ip, userAgent);
 
     Cliente c = clienteRepo.findById(rotated.getSubjectId())
         .filter(Cliente::isPortalActivo)
-        .orElseThrow(() -> new UnauthorizedException("Cliente no válido"));
+        .orElseThrow(() -> new UnauthorizedException("Cliente no disponible"));
 
-    String accessToken = createAccessToken(c);
-    String newRawRefreshToken = rotated.getReplacedByTokenHash();
+    Instant now = Instant.now();
+    Instant exp = now.plusSeconds(expMin * 60);
+    var key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+
+    String accessToken = Jwts.builder()
+        .issuer(issuer)
+        .subject(c.getId().toString())
+        .issuedAt(Date.from(now))
+        .expiration(Date.from(exp))
+        .claim("rol", "CLIENTE")
+        .claim("email", c.getEmail())
+        .claim("nombre", c.getNombre())
+        .signWith(key, Jwts.SIG.HS256)
+        .compact();
 
     return new PortalLoginResponse(
         accessToken,
-        newRawRefreshToken,
-        accessTokenService.getExpiresInSeconds()
+        rotated.getReplacedByTokenHash(),
+        expMin * 60
     );
   }
 
@@ -84,10 +118,11 @@ public class PortalAuthService {
   }
 
   @Transactional
-  public void register(String nombre, String email, String password) {
+  public void register(String nombre, String email, String password, String telefono) {
     String nombreNorm = limpiar(nombre);
     String emailNorm = normalizarEmail(email);
     String passwordNorm = password == null ? null : password.trim();
+    String telefonoNorm = limpiarTelefono(telefono);
 
     if (nombreNorm == null || nombreNorm.length() < 2) {
       throw new BadRequestException("El nombre es inválido");
@@ -101,13 +136,17 @@ public class PortalAuthService {
       throw new BadRequestException("La contraseña debe tener al menos 6 caracteres");
     }
 
+    if (telefonoNorm == null || telefonoNorm.length() < 7) {
+      throw new BadRequestException("El teléfono es inválido");
+    }
+
     Cliente cliente = clienteRepo.findByEmailIgnoreCase(emailNorm).orElse(null);
 
     if (cliente == null) {
       cliente = new Cliente();
       cliente.setNombre(nombreNorm);
       cliente.setEmail(emailNorm);
-      cliente.setTelefono(null);
+      cliente.setTelefono(telefonoNorm);
       cliente.setPortalActivo(true);
       cliente.setPasswordHashPortal(encoder.encode(passwordNorm));
       clienteRepo.save(cliente);
@@ -125,27 +164,24 @@ public class PortalAuthService {
     }
 
     cliente.setEmail(emailNorm);
+    cliente.setTelefono(telefonoNorm);
     cliente.setPortalActivo(true);
     cliente.setPasswordHashPortal(encoder.encode(passwordNorm));
 
     clienteRepo.save(cliente);
   }
 
-  private String createAccessToken(Cliente c) {
-    return accessTokenService.createToken(
-        c.getId(),
-        Map.of(
-            "rol", "CLIENTE",
-            "email", c.getEmail(),
-            "nombre", c.getNombre()
-        )
-    );
-  }
-
   private String limpiar(String value) {
     if (value == null) return null;
     String out = value.trim();
     return out.isBlank() ? null : out;
+  }
+
+  private String limpiarTelefono(String value) {
+    if (value == null) return null;
+    String out = value.trim();
+    if (out.isBlank()) return null;
+    return out.length() <= 30 ? out : out.substring(0, 30);
   }
 
   private String normalizarEmail(String email) {

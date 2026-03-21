@@ -16,5 +16,9 @@ public record PortalRegisterRequest(
 
     @NotBlank
     @Size(min = 6, max = 120)
-    String password
+    String password,
+
+    @NotBlank
+    @Size(min = 7, max = 30)
+    String telefono
 ) { }

@@ -7,6 +7,8 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -54,6 +56,41 @@ public class SeguridadConfig {
   }
 
   @Bean
+  @Order(1)
+  @Profile("dev")
+  SecurityFilterChain swaggerFilterChain(HttpSecurity http) throws Exception {
+    http
+        .securityMatcher(
+            "/v3/api-docs/**",
+            "/swagger-ui/**",
+            "/swagger-ui.html"
+        )
+        .csrf(csrf -> csrf.disable())
+        .cors(Customizer.withDefaults())
+        .headers(headers -> headers
+            .contentTypeOptions(Customizer.withDefaults())
+            .frameOptions(frame -> frame.sameOrigin())
+            .referrerPolicy(ref -> ref.policy(
+                org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER
+            ))
+            .cacheControl(Customizer.withDefaults())
+            .contentSecurityPolicy(csp -> csp.policyDirectives(
+                "default-src 'self'; " +
+                "img-src 'self' data:; " +
+                "style-src 'self' 'unsafe-inline'; " +
+                "script-src 'self' 'unsafe-inline'; " +
+                "connect-src 'self'; " +
+                "font-src 'self' data:; " +
+                "frame-ancestors 'none';"
+            ))
+        )
+        .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+
+    return http.build();
+  }
+
+  @Bean
+  @Order(2)
   SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
     http
         .csrf(csrf -> csrf.disable())
@@ -65,16 +102,15 @@ public class SeguridadConfig {
                 org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER
             ))
             .cacheControl(Customizer.withDefaults())
-            .contentSecurityPolicy(csp -> csp.policyDirectives("default-src 'none'; frame-ancestors 'none';"))
+            .contentSecurityPolicy(csp -> csp.policyDirectives(
+                "default-src 'none'; frame-ancestors 'none';"
+            ))
         )
         .authorizeHttpRequests(auth -> auth
             .requestMatchers("/api/v1/auth/**").permitAll()
             .requestMatchers("/api/v1/portal/auth/**").permitAll()
             .requestMatchers("/actuator/health").permitAll()
             .requestMatchers("/actuator/health/**").permitAll()
-            .requestMatchers("/v3/api-docs/**").permitAll()
-            .requestMatchers("/swagger-ui/**").permitAll()
-            .requestMatchers("/swagger-ui.html").permitAll()
             .anyRequest().authenticated()
         )
         .exceptionHandling(ex -> ex
