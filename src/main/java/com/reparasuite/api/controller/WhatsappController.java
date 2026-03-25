@@ -34,4 +34,10 @@ public class WhatsappController {
     String url = whatsappService.generarLinkRecordatorioLogin(clienteId);
     return ResponseEntity.ok(new WhatsappLinkResponse(url));
   }
+
+  @GetMapping("/seguimiento-ot/{otId}")
+  public ResponseEntity<WhatsappLinkResponse> generarLinkSeguimientoOt(@PathVariable UUID otId) {
+    String url = whatsappService.generarLinkSeguimientoOt(otId);
+    return ResponseEntity.ok(new WhatsappLinkResponse(url));
+  }
 }

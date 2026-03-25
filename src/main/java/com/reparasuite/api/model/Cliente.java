@@ -1,17 +1,20 @@
 package com.reparasuite.api.model;
 
 import java.util.UUID;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 
 @Entity
 @Table(name = "cliente")
 public class Cliente {
 
   @Id
+  @GeneratedValue(strategy = GenerationType.AUTO)
+  @Column(columnDefinition = "uuid", updatable = false, nullable = false)
   private UUID id;
 
   @Column(nullable = false)
@@ -28,6 +31,10 @@ public class Cliente {
 
   @Column(name = "portal_activo", nullable = false)
   private boolean portalActivo;
+
+  // Constructor vacío necesario para JPA
+  public Cliente() {
+  }
 
   public UUID getId() {
     return id;
