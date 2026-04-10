@@ -77,6 +77,9 @@ public class InventarioItem {
   @Column(length = 4000)
   private String notas;
 
+  @Column(name = "imagen_url", length = 5000) // Usamos un tamaño largo por si guardas Base64 o URLs largas
+  private String imagenUrl;
+
   @Column(nullable = false)
   private boolean activo = true;
 
@@ -123,6 +126,7 @@ public class InventarioItem {
   public BigDecimal getPrecioVenta() { return precioVenta; }
   public String getUbicacionAlmacen() { return ubicacionAlmacen; }
   public String getNotas() { return notas; }
+  public String getImagenUrl() { return imagenUrl; }
   public boolean isActivo() { return activo; }
   public OffsetDateTime getCreatedAt() { return createdAt; }
   public OffsetDateTime getUpdatedAt() { return updatedAt; }
@@ -147,6 +151,7 @@ public class InventarioItem {
   public void setPrecioVenta(BigDecimal precioVenta) { this.precioVenta = precioVenta; }
   public void setUbicacionAlmacen(String ubicacionAlmacen) { this.ubicacionAlmacen = ubicacionAlmacen; }
   public void setNotas(String notas) { this.notas = notas; }
+  public void setImagenUrl(String imagenUrl) { this.imagenUrl = imagenUrl; }
   public void setActivo(boolean activo) { this.activo = activo; }
   public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
   public void setUpdatedBy(UUID updatedBy) { this.updatedBy = updatedBy; }

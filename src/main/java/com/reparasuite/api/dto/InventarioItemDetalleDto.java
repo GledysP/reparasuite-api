@@ -23,6 +23,7 @@ public record InventarioItemDetalleDto(
     String precioVenta,
     String ubicacionAlmacen,
     String notas,
+    String imagenUrl,
     boolean activo,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt

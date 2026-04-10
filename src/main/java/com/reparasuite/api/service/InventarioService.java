@@ -73,20 +73,47 @@ public class InventarioService {
     return toDetalle(i);
   }
 
+  //Nuevo método para crear categorías
+  @Transactional
+  public InventarioCategoriaDto crearCategoria(InventarioCategoriaDto req) {
+      if (categoriaRepo.findByCodigoIgnoreCase(req.codigo()).isPresent()) {
+          throw new ConflictException("Ya existe una categoría con ese código");
+      }
+      
+      InventarioCategoria c = new InventarioCategoria();
+      c.setCodigo(req.codigo().toUpperCase().trim());
+      c.setNombre(req.nombre().trim());
+      c.setDescripcion(req.descripcion());
+      c.setActiva(true);
+      
+      c = categoriaRepo.save(c);
+      return new InventarioCategoriaDto(c.getId(), c.getCodigo(), c.getNombre(), c.getDescripcion());
+  }
+
+  //Método crear (Item) para automatizar el SKU
   @Transactional
   public InventarioItemDetalleDto crear(InventarioItemCrearRequest req) {
-    String sku = normalizeRequired(req.sku(), "sku");
-
-    if (itemRepo.existsBySkuIgnoreCase(sku)) {
-      throw new ConflictException("Ya existe un item con ese SKU");
-    }
-
-    InventarioItem i = new InventarioItem();
-    aplicarReq(i, req);
-    i.setSku(sku);
-    i.setStockActual(BigDecimal.ZERO);
-    i = itemRepo.save(i);
-    return toDetalle(i);
+      InventarioItem i = new InventarioItem();
+      aplicarReq(i, req);
+      
+      if (req.sku() == null || req.sku().isBlank()) {
+          // Buscamos el conteo total pero le sumamos un timestamp o un random corto 
+          // para asegurar que sea único incluso en milisegundos.
+          String prefix = "REF";
+          long total = itemRepo.count() + 1;
+          // Agregamos un sufijo aleatorio de 3 dígitos para evitar colisiones en SaaS
+          int randomSuffix = (int) (Math.random() * 900) + 100; 
+          i.setSku(prefix + "-" + String.format("%05d", total) + "-" + randomSuffix);
+      } else {
+          if (itemRepo.existsBySkuIgnoreCase(req.sku())) {
+              throw new ConflictException("Ya existe un item con ese SKU");
+          }
+          i.setSku(req.sku().trim().toUpperCase());
+      }
+  
+      i.setStockActual(BigDecimal.ZERO);
+      i = itemRepo.save(i);
+      return toDetalle(i);
   }
 
   @Transactional
@@ -183,6 +210,7 @@ public class InventarioService {
     i.setPrecioVenta(parseDecimalNullable(req.precioVenta(), BigDecimal.ZERO));
     i.setUbicacionAlmacen(limpiarNullable(req.ubicacionAlmacen()));
     i.setNotas(limpiarNullable(req.notas()));
+    i.setImagenUrl(limpiarNullable(req.imagenUrl()));
     i.setActivo(req.activo() == null ? true : req.activo());
   }
 
@@ -264,6 +292,7 @@ public class InventarioService {
         decimalStr(i.getPrecioVenta()),
         i.getUbicacionAlmacen(),
         i.getNotas(),
+        i.getImagenUrl(),
         i.isActivo(),
         i.getCreatedAt(),
         i.getUpdatedAt()

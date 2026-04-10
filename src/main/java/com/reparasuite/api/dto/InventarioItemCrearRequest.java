@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public record InventarioItemCrearRequest(
-    @NotBlank @Size(max = 100) String sku,
+    @Size(max = 100) String sku,
     @Size(max = 100) String codigoBarras,
     @NotBlank @Size(max = 200) String nombre,
     @Size(max = 4000) String descripcion,
@@ -21,5 +21,6 @@ public record InventarioItemCrearRequest(
     String precioVenta,
     @Size(max = 120) String ubicacionAlmacen,
     @Size(max = 4000) String notas,
+    String imagenUrl,
     Boolean activo
 ) {}

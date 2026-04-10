@@ -54,6 +54,12 @@ public class InventarioController {
     return service.categorias();
   }
 
+  @PostMapping("/catalogos/categorias")
+  @PreAuthorize("hasAnyRole('ADMIN', 'TECNICO')")
+  public ResponseEntity<InventarioCategoriaDto> crearCategoria(@Validated @RequestBody InventarioCategoriaDto req) {
+      return ResponseEntity.ok(service.crearCategoria(req));
+  }
+
   @GetMapping("/{id}/movimientos")
   public List<InventarioMovimientoDto> movimientos(@PathVariable String id) {
     return service.movimientos(UUID.fromString(id));
