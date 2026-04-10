@@ -11,11 +11,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 import com.reparasuite.api.dto.ApiListaResponse;
 import com.reparasuite.api.dto.CitaDto;
-import com.reparasuite.api.dto.CitaRequest;
 import com.reparasuite.api.dto.ClienteResumenDto;
 import com.reparasuite.api.dto.FotoDto;
 import com.reparasuite.api.dto.HistorialItemDto;
@@ -28,30 +26,20 @@ import com.reparasuite.api.dto.OtListaItemDto;
 import com.reparasuite.api.dto.OtRevisionTecnicaRequest;
 import com.reparasuite.api.dto.PagoDto;
 import com.reparasuite.api.dto.PresupuestoDto;
-import com.reparasuite.api.dto.PresupuestoGuardarRequest;
 import com.reparasuite.api.dto.UsuarioResumenDto;
 import com.reparasuite.api.exception.BadRequestException;
-import com.reparasuite.api.exception.ConflictException;
 import com.reparasuite.api.exception.ForbiddenException;
 import com.reparasuite.api.exception.NotFoundException;
 import com.reparasuite.api.model.ActorTipo;
 import com.reparasuite.api.model.CategoriaEquipo;
-import com.reparasuite.api.model.CitaOt;
 import com.reparasuite.api.model.Cliente;
 import com.reparasuite.api.model.Equipo;
-import com.reparasuite.api.model.EstadoCita;
 import com.reparasuite.api.model.EstadoOt;
-import com.reparasuite.api.model.EstadoPagoOt;
 import com.reparasuite.api.model.EstadoPresupuesto;
 import com.reparasuite.api.model.EstadoTicket;
 import com.reparasuite.api.model.EventoHistorialOt;
-import com.reparasuite.api.model.FotoOt;
 import com.reparasuite.api.model.HistorialOt;
-import com.reparasuite.api.model.MensajeOt;
-import com.reparasuite.api.model.NotaOt;
 import com.reparasuite.api.model.OrdenTrabajo;
-import com.reparasuite.api.model.PagoOt;
-import com.reparasuite.api.model.PresupuestoOt;
 import com.reparasuite.api.model.PrioridadOt;
 import com.reparasuite.api.model.Taller;
 import com.reparasuite.api.model.TicketMensaje;
@@ -444,343 +432,6 @@ public class OrdenesTrabajoService {
     registrarEvento(ot, EventoHistorialOt.CAMBIO_ESTADO, "Estado actualizado a " + nuevo.name());
   }
 
-  @Transactional
-  public void anadirNota(String idOrCodigo, String contenido, boolean visibleCliente) {
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-
-    if (auth().isCliente()) {
-      ensureClienteOwner(ot);
-      visibleCliente = true;
-    } else if (!auth().isBackoffice()) {
-      throw new ForbiddenException("No autorizado");
-    }
-
-    NotaOt n = new NotaOt();
-    n.setOt(ot);
-    n.setContenido(contenido);
-    n.setVisibleCliente(visibleCliente);
-    notaRepo.save(n);
-
-    registrarEvento(
-        ot,
-        EventoHistorialOt.NOTA_AGREGADA,
-        visibleCliente ? "Se añadió una nota visible al cliente" : "Se añadió una nueva nota interna"
-    );
-  }
-
-  @Transactional
-  public FotoDto subirFoto(String idOrCodigo, MultipartFile file, boolean visibleCliente) throws java.io.IOException {
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-
-    if (auth().isCliente()) {
-      ensureClienteOwner(ot);
-      visibleCliente = true;
-    } else if (!auth().isBackoffice()) {
-      throw new ForbiddenException("No autorizado");
-    }
-
-    var stored = secureUploadService.storeOtImage(ot.getId(), file);
-
-    FotoOt f = new FotoOt();
-    f.setOt(ot);
-    f.setUrl(stored.url());
-    f.setVisibleCliente(visibleCliente);
-    f = fotoRepo.save(f);
-
-    registrarEvento(ot, EventoHistorialOt.FOTO_SUBIDA, "Archivo subido: " + stored.originalFilename());
-
-    return new FotoDto(f.getId(), f.getUrl(), f.getCreatedAt());
-  }
-
-  @Transactional
-  public PresupuestoDto guardarPresupuesto(String idOrCodigo, PresupuestoGuardarRequest req) {
-    requireBackoffice();
-
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-
-    PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId()).orElseGet(() -> {
-      PresupuestoOt x = new PresupuestoOt();
-      x.setOt(ot);
-      x.setEstado(EstadoPresupuesto.BORRADOR);
-      return x;
-    });
-
-    if (p.getEstado() == EstadoPresupuesto.ACEPTADO || p.getEstado() == EstadoPresupuesto.RECHAZADO) {
-      throw new ConflictException("No se puede editar un presupuesto " + p.getEstado().name());
-    }
-
-    p.setImporte(req.importe());
-    p.setDetalle(req.detalle());
-    p = presupuestoRepo.save(p);
-
-    registrarEvento(ot, EventoHistorialOt.PRESUPUESTO_GUARDADO, "Presupuesto guardado (BORRADOR)");
-    return toPresupuestoDto(p);
-  }
-
-  @Transactional
-  public PresupuestoDto enviarPresupuesto(String idOrCodigo) {
-    requireBackoffice();
-
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-    PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId())
-        .orElseThrow(() -> new NotFoundException("Presupuesto no encontrado"));
-
-    if (p.getEstado() == EstadoPresupuesto.ACEPTADO) {
-      throw new ConflictException("Presupuesto ya aceptado");
-    }
-    if (p.getEstado() == EstadoPresupuesto.RECHAZADO) {
-      throw new ConflictException("Presupuesto rechazado: cree uno nuevo");
-    }
-
-    p.setEstado(EstadoPresupuesto.ENVIADO);
-    p.setSentAt(OffsetDateTime.now());
-    presupuestoRepo.save(p);
-
-    ordenTrabajoWorkflowService.moveTo(ot, EstadoOt.PRESUPUESTO);
-    otRepo.save(ot);
-
-    registrarEvento(ot, EventoHistorialOt.PRESUPUESTO_ENVIADO, "Presupuesto enviado al cliente");
-
-    final var importe = p.getImporte();
-    pagoRepo.findByOt_Id(ot.getId()).orElseGet(() -> {
-      PagoOt pago = new PagoOt();
-      pago.setOt(ot);
-      pago.setImporte(importe);
-      pago.setEstado(EstadoPagoOt.PENDIENTE);
-      return pagoRepo.save(pago);
-    });
-
-    return toPresupuestoDto(p);
-  }
-
-  @Transactional
-  public void aceptarPresupuesto(String idOrCodigo, boolean acepto) {
-    ensureClienteForOt(idOrCodigo);
-
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-    ensureClienteOwner(ot);
-
-    PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId())
-        .orElseThrow(() -> new NotFoundException("Presupuesto no encontrado"));
-
-    if (p.getEstado() != EstadoPresupuesto.ENVIADO) {
-      throw new ConflictException("Presupuesto no aceptable en estado: " + p.getEstado().name());
-    }
-    if (!acepto) {
-      throw new BadRequestException("Debe aceptar el check de aceptación");
-    }
-
-    p.setEstado(EstadoPresupuesto.ACEPTADO);
-    p.setRespondedAt(OffsetDateTime.now());
-    p.setAceptacionCheck(true);
-    p.setAceptacionAt(OffsetDateTime.now());
-    presupuestoRepo.save(p);
-
-    ordenTrabajoWorkflowService.moveTo(ot, EstadoOt.APROBADA);
-    otRepo.save(ot);
-
-    registrarEvento(ot, EventoHistorialOt.PRESUPUESTO_ACEPTADO, "Presupuesto aceptado por el cliente");
-  }
-
-  @Transactional
-  public void rechazarPresupuesto(String idOrCodigo) {
-    ensureClienteForOt(idOrCodigo);
-
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-    ensureClienteOwner(ot);
-
-    PresupuestoOt p = presupuestoRepo.findByOt_Id(ot.getId())
-        .orElseThrow(() -> new NotFoundException("Presupuesto no encontrado"));
-
-    if (p.getEstado() != EstadoPresupuesto.ENVIADO) {
-      throw new ConflictException("Presupuesto no rechazable en estado: " + p.getEstado().name());
-    }
-
-    p.setEstado(EstadoPresupuesto.RECHAZADO);
-    p.setRespondedAt(OffsetDateTime.now());
-    presupuestoRepo.save(p);
-
-    if (ot.getEstado() != EstadoOt.PRESUPUESTO) {
-      ordenTrabajoWorkflowService.moveTo(ot, EstadoOt.PRESUPUESTO);
-      otRepo.save(ot);
-    }
-
-    registrarEvento(ot, EventoHistorialOt.PRESUPUESTO_RECHAZADO, "Presupuesto rechazado por el cliente");
-  }
-
-  @Transactional
-  public void marcarTransferencia(String idOrCodigo) {
-    ensureClienteForOt(idOrCodigo);
-
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-    ensureClienteOwner(ot);
-
-    PagoOt p = pagoRepo.findByOt_Id(ot.getId()).orElseGet(() -> {
-      PagoOt x = new PagoOt();
-      x.setOt(ot);
-      x.setImporte(java.math.BigDecimal.ZERO);
-      x.setEstado(EstadoPagoOt.PENDIENTE);
-      return pagoRepo.save(x);
-    });
-
-    p.setEstado(EstadoPagoOt.MARCADO_TRANSFERENCIA);
-    pagoRepo.save(p);
-
-    registrarEvento(ot, EventoHistorialOt.PAGO_MARCADO_TRANSFERENCIA, "Cliente indica pago por transferencia");
-  }
-
-  @Transactional
-  public PagoDto subirComprobantePago(String idOrCodigo, MultipartFile file) throws java.io.IOException {
-    ensureClienteForOt(idOrCodigo);
-
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-    ensureClienteOwner(ot);
-
-    PagoOt p = pagoRepo.findByOt_Id(ot.getId())
-        .orElseThrow(() -> new NotFoundException("Pago no encontrado"));
-
-    var stored = secureUploadService.storePaymentReceipt(ot.getId(), file);
-
-    p.setComprobanteUrl(stored.url());
-    p.setEstado(EstadoPagoOt.COMPROBANTE_SUBIDO);
-    p = pagoRepo.save(p);
-
-    registrarEvento(ot, EventoHistorialOt.PAGO_COMPROBANTE_SUBIDO, "Comprobante de pago subido");
-    return new PagoDto(p.getId(), p.getEstado().name(), p.getImporte(), p.getComprobanteUrl());
-  }
-
-  @Transactional
-  public void confirmarPagoRecibido(String idOrCodigo) {
-    requireBackoffice();
-
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-
-    PagoOt p = pagoRepo.findByOt_Id(ot.getId()).orElseGet(() -> {
-      PagoOt x = new PagoOt();
-      x.setOt(ot);
-      var presupuesto = presupuestoRepo.findByOt_Id(ot.getId()).orElse(null);
-      x.setImporte(presupuesto != null ? presupuesto.getImporte() : java.math.BigDecimal.ZERO);
-      x.setEstado(EstadoPagoOt.PENDIENTE);
-      return pagoRepo.save(x);
-    });
-
-    EstadoPagoOt estadoConfirmado = resolveEstadoPagoConfirmado();
-
-    if (p.getEstado() == estadoConfirmado) {
-      return;
-    }
-
-    p.setEstado(estadoConfirmado);
-    pagoRepo.save(p);
-
-    registrarEvento(ot, EventoHistorialOt.PAGO_MARCADO_TRANSFERENCIA, "Backoffice confirmó pago recibido");
-  }
-
-  @Transactional
-  public CitaDto reservarCita(String idOrCodigo, CitaRequest req) {
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-
-    if (auth().isCliente()) {
-      ensureClienteOwner(ot);
-    } else if (!auth().isBackoffice()) {
-      throw new ForbiddenException("No autorizado");
-    }
-
-    OffsetDateTime inicio = parseOffsetDateTime(req.inicio(), "inicio");
-    OffsetDateTime fin = parseOffsetDateTime(req.fin(), "fin");
-
-    if (!fin.isAfter(inicio)) {
-      throw new BadRequestException("La fecha/hora fin debe ser mayor que inicio");
-    }
-
-    CitaOt c = new CitaOt();
-    c.setOt(ot);
-    c.setInicio(inicio);
-    c.setFin(fin);
-    c.setEstado(EstadoCita.PROGRAMADA);
-    c = citaRepo.save(c);
-
-    registrarEvento(
-        ot,
-        EventoHistorialOt.CITA_RESERVADA,
-        (auth().isCliente() ? "Cliente" : "Backoffice") + " programó cita: " + c.getInicio()
-    );
-
-    return new CitaDto(c.getId(), c.getInicio(), c.getFin(), c.getEstado().name());
-  }
-
-  @Transactional
-  public CitaDto reprogramarCita(UUID citaId, CitaRequest req) {
-    CitaOt c = citaRepo.findById(citaId)
-        .orElseThrow(() -> new NotFoundException("Cita no encontrada"));
-
-    OrdenTrabajo ot = c.getOt();
-
-    if (auth().isCliente()) {
-      ensureClienteOwner(ot);
-    } else if (!auth().isBackoffice()) {
-      throw new ForbiddenException("No autorizado");
-    }
-
-    OffsetDateTime inicio = parseOffsetDateTime(req.inicio(), "inicio");
-    OffsetDateTime fin = parseOffsetDateTime(req.fin(), "fin");
-
-    if (!fin.isAfter(inicio)) {
-      throw new BadRequestException("La fecha/hora fin debe ser mayor que inicio");
-    }
-
-    c.setInicio(inicio);
-    c.setFin(fin);
-    c.setEstado(EstadoCita.REPROGRAMADA);
-    c = citaRepo.save(c);
-
-    registrarEvento(
-        ot,
-        EventoHistorialOt.CITA_REPROGRAMADA,
-        (auth().isCliente() ? "Cliente" : "Backoffice") + " reprogramó cita: " + c.getInicio()
-    );
-
-    return new CitaDto(c.getId(), c.getInicio(), c.getFin(), c.getEstado().name());
-  }
-
-  @Transactional
-  public MensajeDto enviarMensaje(String idOrCodigo, String contenido) {
-    OrdenTrabajo ot = resolverOt(idOrCodigo);
-
-    if (auth().isCliente()) {
-      ensureClienteOwner(ot);
-    } else if (!auth().isBackoffice()) {
-      throw new ForbiddenException("No autorizado");
-    }
-
-    MensajeOt m = new MensajeOt();
-    m.setOt(ot);
-
-    if (auth().isCliente()) {
-      Cliente c = clienteRepo.findById(auth().id())
-          .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
-      m.setRemitenteTipo(TipoRemitente.CLIENTE);
-      m.setRemitenteNombre(c.getNombre());
-    } else {
-      Usuario u = usuarioRepo.findById(auth().id())
-          .orElseThrow(() -> new NotFoundException("Usuario no encontrado"));
-      m.setRemitenteTipo(TipoRemitente.USUARIO);
-      m.setRemitenteNombre(u.getNombre());
-    }
-
-    m.setContenido(contenido);
-    m = mensajeRepo.save(m);
-
-    registrarEvento(ot, EventoHistorialOt.MENSAJE_ENVIADO, "Mensaje enviado");
-    return new MensajeDto(
-        m.getId(),
-        m.getRemitenteTipo().name(),
-        m.getRemitenteNombre(),
-        m.getContenido(),
-        m.getCreatedAt()
-    );
-  }
-
   public record CrearDesdeTicketResponse(UUID id, String codigo) {}
 
   @Transactional
@@ -872,18 +523,6 @@ public class OrdenesTrabajoService {
     otRepo.delete(ot);
   }
 
-  private PresupuestoDto toPresupuestoDto(PresupuestoOt p) {
-    return new PresupuestoDto(
-        p.getId(),
-        p.getEstado().name(),
-        p.getImporte(),
-        p.getDetalle(),
-        p.isAceptacionCheck(),
-        p.getSentAt(),
-        p.getRespondedAt()
-    );
-  }
-
   private void registrarEvento(OrdenTrabajo ot, EventoHistorialOt evento, String descripcion) {
     HistorialOt h = new HistorialOt();
     h.setOt(ot);
@@ -928,17 +567,6 @@ public class OrdenesTrabajoService {
     }
   }
 
-  private void ensureClienteForOt(String idOrCodigo) {
-    if (!auth().isCliente()) {
-      throw new ForbiddenException("No autorizado");
-    }
-  }
-
-  private void ensureClienteOwner(OrdenTrabajo ot) {
-    if (!auth().isCliente() || !ot.getCliente().getId().equals(auth().id())) {
-      throw new ForbiddenException("No autorizado");
-    }
-  }
 
   private String recortar(String s, int max) {
     if (s == null) return "";
@@ -1054,16 +682,6 @@ public class OrdenesTrabajoService {
     } catch (DateTimeParseException ex) {
       throw new BadRequestException("Fecha inválida para " + fieldName + ": " + raw);
     }
-  }
-
-  private EstadoPagoOt resolveEstadoPagoConfirmado() {
-    for (String n : List.of("CONFIRMADO", "PAGADO", "RECIBIDO")) {
-      try {
-        return EstadoPagoOt.valueOf(n);
-      } catch (IllegalArgumentException ignored) {
-      }
-    }
-    return EstadoPagoOt.CONFIRMADO;
   }
 
   private AuthContextService.AuthUser auth() {

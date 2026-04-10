@@ -26,15 +26,32 @@ import com.reparasuite.api.dto.PresupuestoAceptarRequest;
 import com.reparasuite.api.dto.PresupuestoDto;
 import com.reparasuite.api.dto.PresupuestoGuardarRequest;
 import com.reparasuite.api.service.OrdenesTrabajoService;
+import com.reparasuite.api.service.OtCitaService;
+import com.reparasuite.api.service.OtComunicacionService; // <-- NUEVO SERVICIO COMUNICACION
+import com.reparasuite.api.service.OtPagoService;
+import com.reparasuite.api.service.OtPresupuestoService;
 
 @RestController
 @RequestMapping("/api/v1/ordenes-trabajo")
 public class OrdenesTrabajoController {
 
   private final OrdenesTrabajoService service;
+  private final OtPresupuestoService presupuestoService;
+  private final OtPagoService pagoService;
+  private final OtCitaService citaService;
+  private final OtComunicacionService comunicacionService; // <-- NUEVO SERVICIO COMUNICACION
 
-  public OrdenesTrabajoController(OrdenesTrabajoService service) {
+  public OrdenesTrabajoController(
+          OrdenesTrabajoService service, 
+          OtPresupuestoService presupuestoService,
+          OtPagoService pagoService,
+          OtCitaService citaService,
+          OtComunicacionService comunicacionService) { // <-- INYECCIÓN 
     this.service = service;
+    this.presupuestoService = presupuestoService;
+    this.pagoService = pagoService;
+    this.citaService = citaService;
+    this.comunicacionService = comunicacionService;
   }
 
   @GetMapping
@@ -80,6 +97,8 @@ public class OrdenesTrabajoController {
     return ResponseEntity.noContent().build();
   }
 
+  // 👇 --- RUTAS DE COMUNICACIÓN AL NUEVO SERVICIO --- 👇
+
   @PostMapping("/{id}/notas")
   @PreAuthorize("hasAnyRole('ADMIN','TECNICO','CLIENTE')")
   public ResponseEntity<?> anadirNota(
@@ -87,7 +106,7 @@ public class OrdenesTrabajoController {
       @Validated @RequestBody OtNotaRequest req,
       @RequestParam(defaultValue = "false") boolean visibleCliente
   ) {
-    service.anadirNota(id, req.contenido(), visibleCliente);
+    comunicacionService.anadirNota(id, req.contenido(), visibleCliente);
     return ResponseEntity.noContent().build();
   }
 
@@ -98,8 +117,19 @@ public class OrdenesTrabajoController {
       @RequestParam("file") MultipartFile file,
       @RequestParam(defaultValue = "false") boolean visibleCliente
   ) throws IOException {
-    return ResponseEntity.ok(service.subirFoto(id, file, visibleCliente));
+    return ResponseEntity.ok(comunicacionService.subirFoto(id, file, visibleCliente));
   }
+
+  @PostMapping("/{id}/mensajes")
+  @PreAuthorize("hasAnyRole('ADMIN','TECNICO','CLIENTE')")
+  public ResponseEntity<MensajeDto> enviarMensaje(
+      @PathVariable String id,
+      @Validated @RequestBody MensajeEnviarRequest req
+  ) {
+    return ResponseEntity.ok(comunicacionService.enviarMensaje(id, req.contenido()));
+  }
+
+  // 👆 ----------------------------------------------- 👆
 
   @PostMapping("/{id}/presupuesto")
   @PreAuthorize("hasAnyRole('ADMIN','TECNICO')")
@@ -107,13 +137,13 @@ public class OrdenesTrabajoController {
       @PathVariable String id,
       @Validated @RequestBody PresupuestoGuardarRequest req
   ) {
-    return ResponseEntity.ok(service.guardarPresupuesto(id, req));
+    return ResponseEntity.ok(presupuestoService.guardarPresupuesto(id, req));
   }
 
   @PostMapping("/{id}/presupuesto/enviar")
   @PreAuthorize("hasAnyRole('ADMIN','TECNICO')")
   public ResponseEntity<PresupuestoDto> enviarPresupuesto(@PathVariable String id) {
-    return ResponseEntity.ok(service.enviarPresupuesto(id));
+    return ResponseEntity.ok(presupuestoService.enviarPresupuesto(id));
   }
 
   @PostMapping("/{id}/presupuesto/aceptar")
@@ -122,21 +152,21 @@ public class OrdenesTrabajoController {
       @PathVariable String id,
       @Validated @RequestBody PresupuestoAceptarRequest req
   ) {
-    service.aceptarPresupuesto(id, req.acepto());
+    presupuestoService.aceptarPresupuesto(id, req.acepto());
     return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/{id}/presupuesto/rechazar")
   @PreAuthorize("hasRole('CLIENTE')")
   public ResponseEntity<?> rechazarPresupuesto(@PathVariable String id) {
-    service.rechazarPresupuesto(id);
+    presupuestoService.rechazarPresupuesto(id);
     return ResponseEntity.noContent().build();
   }
 
   @PostMapping("/{id}/pago/transferencia")
   @PreAuthorize("hasRole('CLIENTE')")
   public ResponseEntity<?> marcarTransferencia(@PathVariable String id) {
-    service.marcarTransferencia(id);
+    pagoService.marcarTransferencia(id);
     return ResponseEntity.noContent().build();
   }
 
@@ -146,13 +176,13 @@ public class OrdenesTrabajoController {
       @PathVariable String id,
       @RequestParam("file") MultipartFile file
   ) throws IOException {
-    return ResponseEntity.ok(service.subirComprobantePago(id, file));
+    return ResponseEntity.ok(pagoService.subirComprobantePago(id, file));
   }
 
   @PostMapping("/{id}/pago/confirmar")
   @PreAuthorize("hasAnyRole('ADMIN','TECNICO')")
   public ResponseEntity<?> confirmarPagoRecibido(@PathVariable String id) {
-    service.confirmarPagoRecibido(id);
+    pagoService.confirmarPagoRecibido(id);
     return ResponseEntity.noContent().build();
   }
 
@@ -162,7 +192,7 @@ public class OrdenesTrabajoController {
       @PathVariable String id,
       @Validated @RequestBody CitaRequest req
   ) {
-    return ResponseEntity.ok(service.reservarCita(id, req));
+    return ResponseEntity.ok(citaService.reservarCita(id, req));
   }
 
   @PutMapping("/citas/{citaId}")
@@ -171,16 +201,7 @@ public class OrdenesTrabajoController {
       @PathVariable String citaId,
       @Validated @RequestBody CitaRequest req
   ) {
-    return ResponseEntity.ok(service.reprogramarCita(UUID.fromString(citaId), req));
-  }
-
-  @PostMapping("/{id}/mensajes")
-  @PreAuthorize("hasAnyRole('ADMIN','TECNICO','CLIENTE')")
-  public ResponseEntity<MensajeDto> enviarMensaje(
-      @PathVariable String id,
-      @Validated @RequestBody MensajeEnviarRequest req
-  ) {
-    return ResponseEntity.ok(service.enviarMensaje(id, req.contenido()));
+    return ResponseEntity.ok(citaService.reprogramarCita(UUID.fromString(citaId), req));
   }
 
   @PatchMapping("/{id}/revision-tecnica")
