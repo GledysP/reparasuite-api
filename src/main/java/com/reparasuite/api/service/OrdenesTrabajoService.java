@@ -283,6 +283,7 @@ public class OrdenesTrabajoService {
         pago,
         citas,
         mensajes,
+        ot.getCategoriasTrabajo().stream().map(Enum::name).toList(),
         ot.getCreatedAt(),
         ot.getUpdatedAt()
     );
@@ -364,6 +365,20 @@ public class OrdenesTrabajoService {
     ot.setFallaReportada(limpiarNullable(req.fallaReportada()));
     ot.setDescripcion(req.descripcion());
     ot.setEstado(EstadoOt.RECIBIDA);
+
+    // 👇 --- NUEVA LÓGICA DE CATEGORÍAS --- 👇
+    if (req.categoriasTrabajo() != null && !req.categoriasTrabajo().isEmpty()) {
+      java.util.Set<com.reparasuite.api.model.CategoriaTrabajo> categoriasSet = new java.util.HashSet<>();
+      for (String catStr : req.categoriasTrabajo()) {
+        try {
+          categoriasSet.add(com.reparasuite.api.model.CategoriaTrabajo.valueOf(catStr.trim().toUpperCase()));
+        } catch (IllegalArgumentException ignored) { }
+      }
+      ot.setCategoriasTrabajo(categoriasSet);
+    } else {
+      ot.getCategoriasTrabajo().add(com.reparasuite.api.model.CategoriaTrabajo.REPARACION);
+    }
+    // 👆 ---------------------------------- 👆
 
     if (req.fechaPrevista() != null && !req.fechaPrevista().isBlank()) {
       ot.setFechaPrevista(parseOffsetDateTime(req.fechaPrevista(), "fechaPrevista"));
@@ -472,6 +487,15 @@ public class OrdenesTrabajoService {
     ot.setFallaReportada(falla);
     ot.setDescripcion(descripcionLimpia);
     ot.setEstado(EstadoOt.RECIBIDA);
+
+
+    // --- HERENCIA DE CATEGORÍAS DESDE EL TICKET --- 
+    if (ticket.getCategoriasTrabajo() != null && !ticket.getCategoriasTrabajo().isEmpty()) {
+        ot.setCategoriasTrabajo(new java.util.HashSet<>(ticket.getCategoriasTrabajo()));
+    } else {
+        ot.getCategoriasTrabajo().add(com.reparasuite.api.model.CategoriaTrabajo.REPARACION);
+    }
+    
 
     String direccion = limpiarNullable(readDireccionTicket(ticket));
     if (tipo == TipoOt.DOMICILIO && direccion != null) {

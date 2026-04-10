@@ -2,6 +2,8 @@ package com.reparasuite.api.model;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import java.util.Set;
+import java.util.HashSet;
 
 import jakarta.persistence.*;
 
@@ -79,6 +81,14 @@ public class OrdenTrabajo {
   @Column(name = "notas_acceso", length = 2000)
   private String notasAcceso;
 
+  // 👇 --- NUEVO CAMPO: CATEGORÍAS DE TRABAJO --- 👇
+  @ElementCollection(fetch = FetchType.EAGER)
+  @CollectionTable(name = "ot_categoria_trabajo", joinColumns = @JoinColumn(name = "ot_id"))
+  @Enumerated(EnumType.STRING)
+  @Column(name = "categoria")
+  private Set<CategoriaTrabajo> categoriasTrabajo = new HashSet<>();
+  // 👆 ------------------------------------------ 👆
+
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
 
@@ -98,6 +108,7 @@ public class OrdenTrabajo {
     updatedAt = OffsetDateTime.now();
   }
 
+  // Getters
   public UUID getId() { return id; }
   public String getCodigo() { return codigo; }
   public EstadoOt getEstado() { return estado; }
@@ -116,9 +127,11 @@ public class OrdenTrabajo {
   public OffsetDateTime getFechaPrevista() { return fechaPrevista; }
   public String getDireccion() { return direccion; }
   public String getNotasAcceso() { return notasAcceso; }
+  public Set<CategoriaTrabajo> getCategoriasTrabajo() { return categoriasTrabajo; } // <-- Nuevo Getter
   public OffsetDateTime getCreatedAt() { return createdAt; }
   public OffsetDateTime getUpdatedAt() { return updatedAt; }
 
+  // Setters
   public void setCodigo(String codigo) { this.codigo = codigo; }
   public void setEstado(EstadoOt estado) { this.estado = estado; }
   public void setTipo(TipoOt tipo) { this.tipo = tipo; }
@@ -136,4 +149,5 @@ public class OrdenTrabajo {
   public void setFechaPrevista(OffsetDateTime fechaPrevista) { this.fechaPrevista = fechaPrevista; }
   public void setDireccion(String direccion) { this.direccion = direccion; }
   public void setNotasAcceso(String notasAcceso) { this.notasAcceso = notasAcceso; }
+  public void setCategoriasTrabajo(Set<CategoriaTrabajo> categoriasTrabajo) { this.categoriasTrabajo = categoriasTrabajo; } // <-- Nuevo Setter
 }

@@ -35,6 +35,7 @@ public record OtDetalleDto(
     PagoDto pago,
     List<CitaDto> citas,
     List<MensajeDto> mensajes,
+    List<String> categoriasTrabajo, // ✅ NUEVO CAMPO PARA LOS CHIPS
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
 ) { }

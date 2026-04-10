@@ -27,5 +27,8 @@ public record TicketDetalleDto(
     String observaciones,
 
     // ✅ fotos
-    List<TicketFotoDto> fotos
+    List<TicketFotoDto> fotos,
+
+    // ✅ categorías de trabajo (para backoffice/prefill)
+    List<String> categoriasTrabajo
 ) {}

@@ -134,6 +134,23 @@ public class TicketsService {
     t.setClienteTelefonoSnapshot(c.getTelefono());
     t.setClienteEmailSnapshot(c.getEmail());
 
+    // 👇 --- NUEVA LÓGICA DE CATEGORÍAS --- 👇
+    if (req.categoriasTrabajo() != null && !req.categoriasTrabajo().isEmpty()) {
+      java.util.Set<com.reparasuite.api.model.CategoriaTrabajo> categoriasSet = new java.util.HashSet<>();
+      for (String catStr : req.categoriasTrabajo()) {
+        try {
+          categoriasSet.add(com.reparasuite.api.model.CategoriaTrabajo.valueOf(catStr.trim().toUpperCase()));
+        } catch (IllegalArgumentException ignored) {
+          // Si envían algo inválido, lo ignoramos por ahora
+        }
+      }
+      t.setCategoriasTrabajo(categoriasSet);
+    } else {
+      // Si no envían nada, asumimos REPARACION por defecto para no romper el flujo viejo
+      t.getCategoriasTrabajo().add(com.reparasuite.api.model.CategoriaTrabajo.REPARACION);
+    }
+    // 👆 ---------------------------------- 👆
+
     String descripcionFinal = construirDescripcionTicket(
         descripcionLegacy, equipo, falla, tipoSug, direccion, observaciones
     );
@@ -319,7 +336,8 @@ public class TicketsService {
         t.getTipoServicioSugerido(),
         t.getDireccion(),
         t.getObservaciones(),
-        fotos
+        fotos,
+        t.getCategoriasTrabajo().stream().map(Enum::name).toList() // ✅ AQUI PASAMOS LAS CATEGORIAS
     );
   }
 

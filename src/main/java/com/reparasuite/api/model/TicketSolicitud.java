@@ -2,6 +2,8 @@ package com.reparasuite.api.model;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
+import java.util.Set;
+import java.util.HashSet;
 
 import jakarta.persistence.*;
 
@@ -57,6 +59,14 @@ public class TicketSolicitud {
   @Column(name = "observaciones", length = 4000)
   private String observaciones;
 
+  // 👇 --- NUEVO CAMPO: CATEGORÍAS DE TRABAJO --- 👇
+  @ElementCollection(fetch = FetchType.EAGER)
+  @CollectionTable(name = "ticket_categoria_trabajo", joinColumns = @JoinColumn(name = "ticket_id"))
+  @Enumerated(EnumType.STRING)
+  @Column(name = "categoria")
+  private Set<CategoriaTrabajo> categoriasTrabajo = new HashSet<>();
+  // 👆 ------------------------------------------ 👆
+
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
 
@@ -91,6 +101,7 @@ public class TicketSolicitud {
   public String getTipoServicioSugerido() { return tipoServicioSugerido; }
   public String getDireccion() { return direccion; }
   public String getObservaciones() { return observaciones; }
+  public Set<CategoriaTrabajo> getCategoriasTrabajo() { return categoriasTrabajo; } // <-- Nuevo Getter
   public OffsetDateTime getCreatedAt() { return createdAt; }
   public OffsetDateTime getUpdatedAt() { return updatedAt; }
 
@@ -110,6 +121,7 @@ public class TicketSolicitud {
   public void setTipoServicioSugerido(String tipoServicioSugerido) { this.tipoServicioSugerido = tipoServicioSugerido; }
   public void setDireccion(String direccion) { this.direccion = direccion; }
   public void setObservaciones(String observaciones) { this.observaciones = observaciones; }
+  public void setCategoriasTrabajo(Set<CategoriaTrabajo> categoriasTrabajo) { this.categoriasTrabajo = categoriasTrabajo; } // <-- Nuevo Setter
 
   public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
   public void setUpdatedAt(OffsetDateTime updatedAt) { this.updatedAt = updatedAt; }

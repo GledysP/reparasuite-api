@@ -1,5 +1,6 @@
 package com.reparasuite.api.dto;
 
+import java.util.List;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -31,5 +32,7 @@ public record TicketCrearRequest(
     String direccion,
     
     @Size(max = 4000)
-    String observaciones
+    String observaciones,
+
+    List<String> categoriasTrabajo // ✅ NUEVO CAMPO PARA LOS CHIPS
 ) { }
