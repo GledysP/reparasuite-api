@@ -31,3 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+
+# Archivos subidos localmente (Imágenes de prueba)
+uploads/
