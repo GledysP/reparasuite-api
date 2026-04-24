@@ -1,0 +1,25 @@
+name: Integracion Continua API
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Checkout del código
+      uses: actions/checkout@v4
+
+    - name: ☕ Configurar Java 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: 'maven'
+
+    - name: 🚀 Compilar Spring Boot
+      run: |
+        chmod +x mvnw
+        ./mvnw clean package -DskipTests
