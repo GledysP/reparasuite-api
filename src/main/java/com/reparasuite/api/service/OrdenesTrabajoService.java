@@ -613,6 +613,7 @@ public class OrdenesTrabajoService {
         ot.getFallaReportada(),
         ot.getCliente().getNombre(),
         ot.getTecnico() != null ? ot.getTecnico().getNombre() : null,
+        ot.getCategoriasTrabajo().stream().map(Enum::name).toList(),
         ot.getUpdatedAt()
     );
   }
