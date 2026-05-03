@@ -35,3 +35,7 @@ build/
 
 # Archivos subidos localmente (Imágenes de prueba)
 uploads/
+
+# Variables de entorno secretas
+.env
+*.env
