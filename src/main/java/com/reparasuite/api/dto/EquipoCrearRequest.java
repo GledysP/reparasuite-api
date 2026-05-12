@@ -16,5 +16,6 @@ public record EquipoCrearRequest(
     String garantiaHasta,
     @Size(max = 255) String ubicacionHabitual,
     @Size(max = 4000) String notasTecnicas,
-    Boolean estadoActivo
+    Boolean estadoActivo,
+    String fotoBase64
 ) {}

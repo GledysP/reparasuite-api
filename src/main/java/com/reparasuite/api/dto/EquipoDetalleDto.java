@@ -19,6 +19,7 @@ public record EquipoDetalleDto(
     String garantiaHasta,
     String ubicacionHabitual,
     String notasTecnicas,
+    String fotoBase64,
     boolean estadoActivo,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt

@@ -14,5 +14,6 @@ public record EquipoResumenDto(
     String modelo,
     String numeroSerie,
     String ubicacionHabitual,
+    String fotoBase64,
     boolean estadoActivo
 ) {}

@@ -109,6 +109,7 @@ public class EquiposService {
     e.setGarantiaHasta(parseDateNullable(req.garantiaHasta()));
     e.setUbicacionHabitual(limpiarNullable(req.ubicacionHabitual()));
     e.setNotasTecnicas(limpiarNullable(req.notasTecnicas()));
+    e.setFotoBase64(req.fotoBase64());
     e.setEstadoActivo(req.estadoActivo() == null ? true : req.estadoActivo());
 
     e = equipoRepo.save(e);
@@ -137,6 +138,7 @@ public class EquiposService {
     e.setGarantiaHasta(parseDateNullable(req.garantiaHasta()));
     e.setUbicacionHabitual(limpiarNullable(req.ubicacionHabitual()));
     e.setNotasTecnicas(limpiarNullable(req.notasTecnicas()));
+    e.setFotoBase64(req.fotoBase64());
     e.setEstadoActivo(req.estadoActivo() == null ? e.isEstadoActivo() : req.estadoActivo());
 
     e = equipoRepo.save(e);
@@ -225,6 +227,7 @@ public class EquiposService {
         e.getModelo(),
         e.getNumeroSerie(),
         e.getUbicacionHabitual(),
+        e.getFotoBase64(),
         e.isEstadoActivo()
     );
   }
@@ -246,6 +249,7 @@ public class EquiposService {
         e.getGarantiaHasta() != null ? e.getGarantiaHasta().toString() : null,
         e.getUbicacionHabitual(),
         e.getNotasTecnicas(),
+        e.getFotoBase64(),
         e.isEstadoActivo(),
         e.getCreatedAt(),
         e.getUpdatedAt()

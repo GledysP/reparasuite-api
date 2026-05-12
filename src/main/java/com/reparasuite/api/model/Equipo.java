@@ -65,6 +65,9 @@ public class Equipo {
   @Column(name = "estado_activo", nullable = false)
   private boolean estadoActivo = true;
 
+  @Column(name = "foto_base64", columnDefinition = "TEXT")
+  private String fotoBase64;
+
   @Column(name = "created_at", nullable = false)
   private OffsetDateTime createdAt;
 
@@ -103,6 +106,7 @@ public class Equipo {
   public LocalDate getGarantiaHasta() { return garantiaHasta; }
   public String getUbicacionHabitual() { return ubicacionHabitual; }
   public String getNotasTecnicas() { return notasTecnicas; }
+  public String getFotoBase64() { return fotoBase64; }
   public boolean isEstadoActivo() { return estadoActivo; }
   public OffsetDateTime getCreatedAt() { return createdAt; }
   public OffsetDateTime getUpdatedAt() { return updatedAt; }
@@ -123,6 +127,7 @@ public class Equipo {
   public void setUbicacionHabitual(String ubicacionHabitual) { this.ubicacionHabitual = ubicacionHabitual; }
   public void setNotasTecnicas(String notasTecnicas) { this.notasTecnicas = notasTecnicas; }
   public void setEstadoActivo(boolean estadoActivo) { this.estadoActivo = estadoActivo; }
+  public void setFotoBase64(String fotoBase64) { this.fotoBase64 = fotoBase64; }
   public void setCreatedBy(UUID createdBy) { this.createdBy = createdBy; }
   public void setUpdatedBy(UUID updatedBy) { this.updatedBy = updatedBy; }
 }
