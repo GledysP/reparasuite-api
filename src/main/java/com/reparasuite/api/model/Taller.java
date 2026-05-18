@@ -11,7 +11,7 @@ public class Taller {
 
   @Column(nullable = false)
   private String nombre;
-
+  private String rif;
   private String telefono;
   private String email;
   private String direccion;
@@ -21,6 +21,7 @@ public class Taller {
 
   public Long getId() { return id; }
   public String getNombre() { return nombre; }
+  public String getRif() { return rif; }
   public String getTelefono() { return telefono; }
   public String getEmail() { return email; }
   public String getDireccion() { return direccion; }
@@ -28,6 +29,7 @@ public class Taller {
 
   public void setId(Long id) { this.id = id; }
   public void setNombre(String nombre) { this.nombre = nombre; }
+  public void setRif(String rif) { this.rif = rif; }
   public void setTelefono(String telefono) { this.telefono = telefono; }
   public void setEmail(String email) { this.email = email; }
   public void setDireccion(String direccion) { this.direccion = direccion; }

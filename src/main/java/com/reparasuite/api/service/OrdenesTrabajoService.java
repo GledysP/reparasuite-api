@@ -22,6 +22,7 @@ import com.reparasuite.api.dto.MensajeDto;
 import com.reparasuite.api.dto.NotaDto;
 import com.reparasuite.api.dto.OtCrearRequest;
 import com.reparasuite.api.dto.OtDetalleDto;
+import com.reparasuite.api.dto.OtInfoGeneralRequest;
 import com.reparasuite.api.dto.OtListaItemDto;
 import com.reparasuite.api.dto.OtRevisionTecnicaRequest;
 import com.reparasuite.api.dto.PagoDto;
@@ -547,6 +548,50 @@ public class OrdenesTrabajoService {
     otRepo.delete(ot);
   }
 
+  @Transactional
+  public OtDetalleDto actualizarInfoGeneral(String idOrCodigo, OtInfoGeneralRequest req) {
+      requireBackoffice();
+      OrdenTrabajo ot = resolverOt(idOrCodigo);
+
+      // 1. Actualizamos Enums básicos
+      if (req.tipo() != null) ot.setTipo(parseEnumRequired(TipoOt.class, req.tipo(), "tipo"));
+      if (req.prioridad() != null) ot.setPrioridad(parseEnumRequired(PrioridadOt.class, req.prioridad(), "prioridad"));
+
+      // 2. Actualizamos Técnico
+      if (req.tecnicoId() != null) {
+          if (req.tecnicoId().isBlank()) {
+              ot.setTecnico(null);
+          } else {
+              Usuario tecnico = usuarioRepo.findById(UUID.fromString(req.tecnicoId()))
+                  .orElseThrow(() -> new NotFoundException("Técnico no encontrado"));
+              ot.setTecnico(tecnico);
+          }
+      }
+
+      // 3. Actualizamos Strings
+      ot.setDireccion(limpiarNullable(req.direccion()));
+      ot.setNotasAcceso(limpiarNullable(req.notasAcceso()));
+
+      // 4. Actualizamos Categorías de Trabajo (Servicios a realizar)
+      if (req.categoriasTrabajo() != null) {
+          java.util.Set<com.reparasuite.api.model.CategoriaTrabajo> nuevasCats = new java.util.HashSet<>();
+          for (String catStr : req.categoriasTrabajo()) {
+              try {
+                  nuevasCats.add(com.reparasuite.api.model.CategoriaTrabajo.valueOf(catStr.trim().toUpperCase()));
+              } catch (IllegalArgumentException ignored) { }
+          }
+          if (!nuevasCats.isEmpty()) {
+              ot.setCategoriasTrabajo(nuevasCats);
+          }
+      }
+
+      otRepo.save(ot);
+      registrarEvento(ot, EventoHistorialOt.CAMBIO_ESTADO, "Se actualizó la información general del servicio");
+
+      return obtener(idOrCodigo);
+  }
+
+  
   private void registrarEvento(OrdenTrabajo ot, EventoHistorialOt evento, String descripcion) {
     HistorialOt h = new HistorialOt();
     h.setOt(ot);

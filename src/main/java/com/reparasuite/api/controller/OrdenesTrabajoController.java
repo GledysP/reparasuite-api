@@ -18,6 +18,7 @@ import com.reparasuite.api.dto.MensajeEnviarRequest;
 import com.reparasuite.api.dto.OtCambiarEstadoRequest;
 import com.reparasuite.api.dto.OtCrearRequest;
 import com.reparasuite.api.dto.OtDetalleDto;
+import com.reparasuite.api.dto.OtInfoGeneralRequest;
 import com.reparasuite.api.dto.OtListaItemDto;
 import com.reparasuite.api.dto.OtNotaRequest;
 import com.reparasuite.api.dto.OtRevisionTecnicaRequest;
@@ -211,5 +212,14 @@ public class OrdenesTrabajoController {
       @RequestBody OtRevisionTecnicaRequest req
   ) {
     return ResponseEntity.ok(service.actualizarRevisionTecnica(id, req));
+  }
+
+  @PatchMapping("/{id}/info-general")
+  @PreAuthorize("hasAnyRole('ADMIN','TECNICO')")
+  public ResponseEntity<OtDetalleDto> actualizarInfoGeneral(
+      @PathVariable String id,
+      @RequestBody OtInfoGeneralRequest req
+  ) {
+      return ResponseEntity.ok(service.actualizarInfoGeneral(id, req));
   }
 }
