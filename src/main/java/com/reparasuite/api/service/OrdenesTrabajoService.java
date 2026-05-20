@@ -257,7 +257,7 @@ public class OrdenesTrabajoService {
       );
     }
 
-    return new OtDetalleDto(
+return new OtDetalleDto(
         ot.getId(),
         ot.getCodigo(),
         ot.getEstado().name(),
@@ -265,6 +265,7 @@ public class OrdenesTrabajoService {
         ot.getPrioridad().name(),
         ot.getEquipo(),
         ot.getEquipoRegistrado() != null ? ot.getEquipoRegistrado().getId() : null,
+        this.formatEquipoNombre(ot.getEquipoRegistrado()), // ✅ AQUI INYECTAMOS EL NUEVO CAMPO USANDO EL METODO
         ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getId() : null,
         ot.getCategoriaEquipo() != null ? ot.getCategoriaEquipo().getNombre() : null,
         ot.getFallaReportada(),
@@ -513,6 +514,31 @@ public class OrdenesTrabajoService {
 
     return new CrearDesdeTicketResponse(ot.getId(), ot.getCodigo());
   }
+  
+
+  @Transactional
+  public OtDetalleDto vincularEquipo(String idOrCodigo, String equipoId) {
+    requireBackoffice();
+    
+    OrdenTrabajo ot = resolverOt(idOrCodigo);
+    UUID eqId = UUID.fromString(equipoId.replace("\"", "").trim());
+    
+    Equipo equipo = equipoRepo.findById(eqId)
+        .orElseThrow(() -> new NotFoundException("Equipo no encontrado"));
+    
+    // Validar que el equipo pertenezca al mismo cliente de la OT
+    if (!equipo.getCliente().getId().equals(ot.getCliente().getId())) {
+        throw new BadRequestException("El equipo no pertenece al cliente de esta orden");
+    }
+    
+    ot.setEquipoRegistrado(equipo);
+    otRepo.save(ot);
+    
+    registrarEvento(ot, EventoHistorialOt.NOTA_AGREGADA, "Se vinculó el equipo: " + equipo.getCodigoEquipo());
+    
+    return obtener(idOrCodigo);
+  }
+
 
   @Transactional
   public void eliminar(String idOrCodigo) {
@@ -547,6 +573,7 @@ public class OrdenesTrabajoService {
 
     otRepo.delete(ot);
   }
+
 
   @Transactional
   public OtDetalleDto actualizarInfoGeneral(String idOrCodigo, OtInfoGeneralRequest req) {
@@ -756,5 +783,16 @@ public class OrdenesTrabajoService {
 
   private AuthContextService.AuthUser auth() {
     return authContextService.current();
+  }
+
+  //  Extrae el nombre formateado de equipo de forma segura
+  private String formatEquipoNombre(Equipo eq) {
+    if (eq == null) return null;
+    
+    // Obtenemos los datos. Usamos trim para evitar espacios vacíos.
+    String tipo = eq.getTipoEquipo() != null ? eq.getTipoEquipo().trim() : "";
+    String codigo = eq.getCodigoEquipo() != null ? eq.getCodigoEquipo().trim() : "S/N";
+  
+    return tipo.isEmpty() ? codigo : tipo + " - " + codigo;
   }
 }

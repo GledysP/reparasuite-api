@@ -222,4 +222,10 @@ public class OrdenesTrabajoController {
   ) {
       return ResponseEntity.ok(service.actualizarInfoGeneral(id, req));
   }
+
+  @PatchMapping("/{id}/vincular-equipo")
+  @PreAuthorize("hasAnyRole('ADMIN','TECNICO')")
+  public ResponseEntity<OtDetalleDto> vincularEquipo(@PathVariable String id, @RequestBody String equipoId) {
+    return ResponseEntity.ok(service.vincularEquipo(id, equipoId));
+}
 }

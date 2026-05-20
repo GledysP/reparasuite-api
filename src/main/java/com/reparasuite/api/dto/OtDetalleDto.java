@@ -13,6 +13,7 @@ public record OtDetalleDto(
 
     String equipo,
     UUID equipoId,
+    String equipoRegistradoNombre,
     UUID categoriaEquipoId,
     String categoriaEquipoNombre,
     String fallaReportada,
@@ -35,7 +36,7 @@ public record OtDetalleDto(
     PagoDto pago,
     List<CitaDto> citas,
     List<MensajeDto> mensajes,
-    List<String> categoriasTrabajo, // ✅ NUEVO CAMPO PARA LOS CHIPS
+    List<String> categoriasTrabajo, 
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
 ) { }
