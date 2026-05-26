@@ -96,7 +96,8 @@ public class ClientesService {
                 ot.getEstado().name(),
                 ot.getTipo().name(),
                 ot.getUpdatedAt(),
-                ot.getTecnico() != null ? ot.getTecnico().getNombre() : null
+                ot.getTecnico() != null ? ot.getTecnico().getNombre() : null,
+                ot.getEquipo()
             ))
             .toList(),
         p.getTotalElements()

@@ -9,5 +9,6 @@ public record ClienteOtItemDto(
 	    String estado,
 	    String tipo,
 	    OffsetDateTime updatedAt,
-	    String tecnicoNombre
+	    String tecnicoNombre,
+	    String equipo
 	) {}
