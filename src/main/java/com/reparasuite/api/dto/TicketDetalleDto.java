@@ -14,21 +14,25 @@ public record TicketDetalleDto(
     OffsetDateTime updatedAt,
     UUID ordenTrabajoId,
 
-    // ✅ snapshots del cliente (para backoffice/prefill)
+    // Cliente real propietario del ticket.
+    UUID clienteId,
+
+    // Snapshots del cliente conservados para trazabilidad.
     String clienteNombre,
     String clienteTelefono,
     String clienteEmail,
 
-    // ✅ campos estructurados
+    // Información estructurada de la solicitud.
     String equipo,
     String descripcionFalla,
     String tipoServicioSugerido,
     String direccion,
     String observaciones,
 
-    // ✅ fotos
+    // Evidencia original asociada al ticket.
     List<TicketFotoDto> fotos,
 
-    // ✅ categorías de trabajo (para backoffice/prefill)
+    // Servicios/categorías seleccionados por el cliente.
     List<String> categoriasTrabajo
-) {}
+) {
+}

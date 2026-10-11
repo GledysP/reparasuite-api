@@ -82,7 +82,12 @@ public class TicketsService {
     Page<TicketSolicitud> p = ticketRepo.findByCliente_Id(clienteId, pageable);
 
     List<TicketListaItemDto> items = p.getContent().stream()
-        .map(t -> new TicketListaItemDto(t.getId(), t.getEstado().name(), t.getAsunto(), t.getUpdatedAt()))
+        .map(t -> new TicketListaItemDto(
+            t.getId(),
+            t.getEstado().name(),
+            t.getAsunto(),
+            t.getUpdatedAt()
+        ))
         .toList();
 
     return new ApiListaResponse<>(items, p.getTotalElements());
@@ -90,6 +95,7 @@ public class TicketsService {
 
   public TicketDetalleDto obtener(String id) {
     UUID clienteId = requireClienteId();
+
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(id))
         .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
@@ -103,6 +109,7 @@ public class TicketsService {
   @Transactional
   public TicketDetalleDto crear(TicketCrearRequest req) {
     UUID clienteId = requireClienteId();
+
     Cliente c = clienteRepo.findById(clienteId)
         .orElseThrow(() -> new NotFoundException("Cliente no encontrado"));
 
@@ -134,26 +141,38 @@ public class TicketsService {
     t.setClienteTelefonoSnapshot(c.getTelefono());
     t.setClienteEmailSnapshot(c.getEmail());
 
-    // 👇 --- NUEVA LÓGICA DE CATEGORÍAS --- 👇
     if (req.categoriasTrabajo() != null && !req.categoriasTrabajo().isEmpty()) {
-      java.util.Set<com.reparasuite.api.model.CategoriaTrabajo> categoriasSet = new java.util.HashSet<>();
+      java.util.Set<com.reparasuite.api.model.CategoriaTrabajo> categoriasSet =
+          new java.util.HashSet<>();
+
       for (String catStr : req.categoriasTrabajo()) {
         try {
-          categoriasSet.add(com.reparasuite.api.model.CategoriaTrabajo.valueOf(catStr.trim().toUpperCase()));
+          categoriasSet.add(
+              com.reparasuite.api.model.CategoriaTrabajo.valueOf(
+                  catStr.trim().toUpperCase()
+              )
+          );
         } catch (IllegalArgumentException ignored) {
-          // Si envían algo inválido, lo ignoramos por ahora
+          // Durante esta fase se ignoran categorías no reconocidas.
         }
       }
+
       t.setCategoriasTrabajo(categoriasSet);
     } else {
-      // Si no envían nada, asumimos REPARACION por defecto para no romper el flujo viejo
-      t.getCategoriasTrabajo().add(com.reparasuite.api.model.CategoriaTrabajo.REPARACION);
+      t.getCategoriasTrabajo().add(
+          com.reparasuite.api.model.CategoriaTrabajo.REPARACION
+      );
     }
-    // 👆 ---------------------------------- 👆
 
     String descripcionFinal = construirDescripcionTicket(
-        descripcionLegacy, equipo, falla, tipoSug, direccion, observaciones
+        descripcionLegacy,
+        equipo,
+        falla,
+        tipoSug,
+        direccion,
+        observaciones
     );
+
     t.setDescripcion(descripcionFinal);
 
     t = ticketRepo.save(t);
@@ -163,6 +182,7 @@ public class TicketsService {
     m.setRemitenteTipo(TipoRemitente.CLIENTE);
     m.setRemitenteNombre(c.getNombre());
     m.setContenido("Solicitud creada");
+
     msgRepo.save(m);
 
     return toDetalleDto(t);
@@ -171,6 +191,7 @@ public class TicketsService {
   @Transactional
   public void anadirMensaje(String ticketId, MensajeEnviarRequest req) {
     UUID clienteId = requireClienteId();
+
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
         .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
@@ -186,14 +207,18 @@ public class TicketsService {
     m.setRemitenteTipo(TipoRemitente.CLIENTE);
     m.setRemitenteNombre(c.getNombre());
     m.setContenido(req.contenido());
-    msgRepo.save(m);
 
+    msgRepo.save(m);
     ticketRepo.save(t);
   }
 
   @Transactional
-  public TicketFotoDto subirFotoCliente(String ticketId, MultipartFile file) throws IOException {
+  public TicketFotoDto subirFotoCliente(
+      String ticketId,
+      MultipartFile file
+  ) throws IOException {
     UUID clienteId = requireClienteId();
+
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
         .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
@@ -204,7 +229,10 @@ public class TicketsService {
     return guardarFotoTicket(t, file);
   }
 
-  public ApiListaResponse<TicketBackofficeListaItemDto> listarBackoffice(int page, int size) {
+  public ApiListaResponse<TicketBackofficeListaItemDto> listarBackoffice(
+      int page,
+      int size
+  ) {
     requireBackofficeRole();
 
     Pageable pageable = PageRequest.of(
@@ -222,8 +250,14 @@ public class TicketsService {
             t.getAsunto(),
             t.getUpdatedAt(),
             t.getCliente().getId(),
-            coalesce(t.getClienteNombreSnapshot(), t.getCliente().getNombre()),
-            coalesce(t.getClienteEmailSnapshot(), t.getCliente().getEmail()),
+            coalesce(
+                t.getClienteNombreSnapshot(),
+                t.getCliente().getNombre()
+            ),
+            coalesce(
+                t.getClienteEmailSnapshot(),
+                t.getCliente().getEmail()
+            ),
             t.getOrdenTrabajoId()
         ))
         .toList();
@@ -233,13 +267,18 @@ public class TicketsService {
 
   public TicketDetalleDto obtenerBackoffice(String id) {
     requireBackofficeRole();
+
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(id))
         .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
+
     return toDetalleDto(t);
   }
 
   @Transactional
-  public void anadirMensajeBackoffice(String ticketId, MensajeEnviarRequest req) {
+  public void anadirMensajeBackoffice(
+      String ticketId,
+      MensajeEnviarRequest req
+  ) {
     requireBackofficeRole();
 
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
@@ -250,34 +289,45 @@ public class TicketsService {
     m.setRemitenteTipo(TipoRemitente.USUARIO);
     m.setRemitenteNombre(auth().displayName());
     m.setContenido(req.contenido());
-    msgRepo.save(m);
 
+    msgRepo.save(m);
     ticketRepo.save(t);
   }
 
   @Transactional
-  public TicketFotoDto subirFotoBackoffice(String ticketId, MultipartFile file) throws IOException {
+  public TicketFotoDto subirFotoBackoffice(
+      String ticketId,
+      MultipartFile file
+  ) throws IOException {
     requireBackofficeRole();
 
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
         .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
+
     return guardarFotoTicket(t, file);
   }
 
   @Transactional
-  public TicketCrearOtResponse crearOtDesdeTicketBackoffice(String ticketId) {
+  public TicketCrearOtResponse crearOtDesdeTicketBackoffice(
+      String ticketId
+  ) {
     requireBackofficeRole();
 
     TicketSolicitud t = ticketRepo.findById(UUID.fromString(ticketId))
         .orElseThrow(() -> new NotFoundException("Ticket no encontrado"));
 
     UUID otExistenteId = t.getOrdenTrabajoId();
+
     if (otExistenteId != null) {
       String codigoExistente = otRepo.findById(otExistenteId)
           .map(OrdenTrabajo::getCodigo)
           .orElse(null);
 
-      return new TicketCrearOtResponse(t.getId(), otExistenteId, codigoExistente);
+      return new TicketCrearOtResponse(
+          t.getId(),
+          otExistenteId,
+          codigoExistente
+      );
     }
 
     var creada = ordenesTrabajoService.crearDesdeTicket(t);
@@ -287,37 +337,49 @@ public class TicketsService {
     if (t.getEstado() == EstadoTicket.ABIERTO) {
       t.setEstado(EstadoTicket.EN_REVISION);
     }
+
     ticketRepo.save(t);
 
     TicketMensaje m = new TicketMensaje();
     m.setTicket(t);
     m.setRemitenteTipo(TipoRemitente.USUARIO);
     m.setRemitenteNombre(auth().displayName());
-    m.setContenido("Se creó una OT desde este ticket: " + creada.codigo());
+    m.setContenido(
+        "Se creó una OT desde este ticket: " + creada.codigo()
+    );
+
     msgRepo.save(m);
 
-    return new TicketCrearOtResponse(t.getId(), creada.id(), creada.codigo());
+    return new TicketCrearOtResponse(
+        t.getId(),
+        creada.id(),
+        creada.codigo()
+    );
   }
 
   private TicketDetalleDto toDetalleDto(TicketSolicitud t) {
-    List<MensajeDto> mensajes = msgRepo.findByTicket_IdOrderByCreatedAtAsc(t.getId()).stream()
-        .map(m -> new MensajeDto(
-            m.getId(),
-            m.getRemitenteTipo().name(),
-            m.getRemitenteNombre(),
-            m.getContenido(),
-            m.getCreatedAt()
-        ))
-        .toList();
+    List<MensajeDto> mensajes =
+        msgRepo.findByTicket_IdOrderByCreatedAtAsc(t.getId())
+            .stream()
+            .map(m -> new MensajeDto(
+                m.getId(),
+                m.getRemitenteTipo().name(),
+                m.getRemitenteNombre(),
+                m.getContenido(),
+                m.getCreatedAt()
+            ))
+            .toList();
 
-    List<TicketFotoDto> fotos = fotoRepo.findByTicket_IdOrderByCreatedAtAsc(t.getId()).stream()
-        .map(f -> new TicketFotoDto(
-            f.getId(),
-            f.getUrl(),
-            f.getNombreOriginal(),
-            f.getCreatedAt()
-        ))
-        .toList();
+    List<TicketFotoDto> fotos =
+        fotoRepo.findByTicket_IdOrderByCreatedAtAsc(t.getId())
+            .stream()
+            .map(f -> new TicketFotoDto(
+                f.getId(),
+                f.getUrl(),
+                f.getNombreOriginal(),
+                f.getCreatedAt()
+            ))
+            .toList();
 
     return new TicketDetalleDto(
         t.getId(),
@@ -328,6 +390,10 @@ public class TicketsService {
         t.getCreatedAt(),
         t.getUpdatedAt(),
         t.getOrdenTrabajoId(),
+
+        // UUID real del cliente propietario del ticket.
+        t.getCliente().getId(),
+
         t.getClienteNombreSnapshot(),
         t.getClienteTelefonoSnapshot(),
         t.getClienteEmailSnapshot(),
@@ -337,17 +403,28 @@ public class TicketsService {
         t.getDireccion(),
         t.getObservaciones(),
         fotos,
-        t.getCategoriasTrabajo().stream().map(Enum::name).toList() // ✅ AQUI PASAMOS LAS CATEGORIAS
+        t.getCategoriasTrabajo()
+            .stream()
+            .map(Enum::name)
+            .toList()
     );
   }
 
-  private TicketFotoDto guardarFotoTicket(TicketSolicitud ticket, MultipartFile file) throws IOException {
-    SecureUploadService.StoredFile stored = secureUploadService.storeTicketImage(ticket.getId(), file);
+  private TicketFotoDto guardarFotoTicket(
+      TicketSolicitud ticket,
+      MultipartFile file
+  ) throws IOException {
+    SecureUploadService.StoredFile stored =
+        secureUploadService.storeTicketImage(
+            ticket.getId(),
+            file
+        );
 
     TicketFoto foto = new TicketFoto();
     foto.setTicket(ticket);
     foto.setUrl(stored.url());
     foto.setNombreOriginal(stored.originalFilename());
+
     foto = fotoRepo.save(foto);
 
     ticketRepo.save(ticket);
@@ -362,9 +439,11 @@ public class TicketsService {
 
   private UUID requireClienteId() {
     var user = auth();
+
     if (!user.isCliente()) {
       throw new ForbiddenException("No autorizado");
     }
+
     return user.id();
   }
 
@@ -387,55 +466,86 @@ public class TicketsService {
       String observaciones
   ) {
     boolean hayEstructurado =
-        notBlank(falla) || notBlank(tipoServicioSugerido) || notBlank(direccion) || notBlank(observaciones);
+        notBlank(falla)
+            || notBlank(tipoServicioSugerido)
+            || notBlank(direccion)
+            || notBlank(observaciones);
 
     if (!hayEstructurado) {
       return notBlank(descripcionLegacy)
           ? descripcionLegacy
-          : (notBlank(equipo) ? "Falla pendiente de detallar" : "");
+          : (notBlank(equipo)
+              ? "Falla pendiente de detallar"
+              : "");
     }
 
     StringBuilder sb = new StringBuilder();
 
     if (notBlank(falla)) {
-      sb.append("Falla reportada: ").append(falla.trim()).append("\n");
+      sb.append("Falla reportada: ")
+          .append(falla.trim())
+          .append("\n");
     }
 
     if (notBlank(tipoServicioSugerido)) {
-      sb.append("Tipo sugerido: ").append(tipoServicioSugerido.trim()).append("\n");
+      sb.append("Tipo sugerido: ")
+          .append(tipoServicioSugerido.trim())
+          .append("\n");
     }
 
     if (notBlank(direccion)) {
-      sb.append("Dirección / ubicación: ").append(direccion.trim()).append("\n");
+      sb.append("Dirección / ubicación: ")
+          .append(direccion.trim())
+          .append("\n");
     }
 
     if (notBlank(observaciones)) {
-      sb.append("Observaciones: ").append(observaciones.trim()).append("\n");
+      sb.append("Observaciones: ")
+          .append(observaciones.trim())
+          .append("\n");
     }
 
     if (notBlank(descripcionLegacy)) {
-      sb.append("\nDetalle adicional:\n").append(descripcionLegacy.trim());
+      sb.append("\nDetalle adicional:\n")
+          .append(descripcionLegacy.trim());
     }
 
     return sb.toString().trim();
   }
 
   private String normalizarTipoServicio(String v) {
-    if (v == null) return null;
+    if (v == null) {
+      return null;
+    }
+
     String x = v.trim().toUpperCase();
-    if (x.isBlank()) return null;
-    if (!x.equals("TIENDA") && !x.equals("DOMICILIO")) return null;
+
+    if (x.isBlank()) {
+      return null;
+    }
+
+    if (!x.equals("TIENDA") && !x.equals("DOMICILIO")) {
+      return null;
+    }
+
     return x;
   }
 
   private String limpio(String s) {
-    if (s == null) return "";
+    if (s == null) {
+      return "";
+    }
+
     return s.trim();
   }
 
   private String limpioNullable(String s) {
-    if (s == null) return null;
+    if (s == null) {
+      return null;
+    }
+
     String t = s.trim();
+
     return t.isBlank() ? null : t;
   }
 
@@ -444,6 +554,6 @@ public class TicketsService {
   }
 
   private String coalesce(String a, String b) {
-    return (a != null && !a.isBlank()) ? a : b;
+    return a != null && !a.isBlank() ? a : b;
   }
 }

@@ -29,14 +29,22 @@ public record OtDetalleDto(
     OffsetDateTime fechaPrevista,
     String direccion,
     String notasAcceso,
+
     List<NotaDto> notas,
+
+    // Evidencia técnica propia de la OT.
     List<FotoDto> fotos,
+
+    // Ticket que originó la OT y evidencia original del cliente.
+    UUID ticketOrigenId,
+    List<TicketFotoDto> fotosTicket,
+
     List<HistorialItemDto> historial,
     PresupuestoDto presupuesto,
     PagoDto pago,
     List<CitaDto> citas,
     List<MensajeDto> mensajes,
-    List<String> categoriasTrabajo, 
+    List<String> categoriasTrabajo,
     OffsetDateTime createdAt,
     OffsetDateTime updatedAt
-) { }
+) {}
