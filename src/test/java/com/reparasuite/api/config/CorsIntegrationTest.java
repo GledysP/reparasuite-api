@@ -4,32 +4,58 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+@SpringBootTest
+@ActiveProfiles("test")
 class CorsIntegrationTest {
+
+  @Autowired
+  private CorsConfigurationSource corsConfigurationSource;
 
   @Test
   void debeConfigurarCorsConOrigenesMetodosYHeaders() {
-    CorsConfig corsConfig = new CorsConfig();
-    CorsConfigurationSource source = corsConfig.corsConfigurationSource();
+    MockHttpServletRequest request =
+        new MockHttpServletRequest("OPTIONS", "/api/v1/test");
 
-    assertNotNull(source);
-    assertTrue(source instanceof UrlBasedCorsConfigurationSource);
+    CorsConfiguration config =
+        corsConfigurationSource.getCorsConfiguration(request);
 
-    UrlBasedCorsConfigurationSource urlSource = (UrlBasedCorsConfigurationSource) source;
-    CorsConfiguration config = urlSource.getCorsConfigurations().get("/**");
+    assertNotNull(
+        config,
+        "Debe existir una configuración CORS para las rutas de la API"
+    );
 
-    assertNotNull(config);
+    assertNotNull(
+        config.getAllowedOriginPatterns(),
+        "Los patrones de origen permitidos deben estar configurados"
+    );
 
-    boolean tieneOrigenes =
-        (config.getAllowedOriginPatterns() != null && !config.getAllowedOriginPatterns().isEmpty())
-        || (config.getAllowedOrigins() != null && !config.getAllowedOrigins().isEmpty());
+    assertTrue(
+        !config.getAllowedOriginPatterns().isEmpty(),
+        "Debe existir al menos un origen permitido"
+    );
 
-    assertTrue(tieneOrigenes);
+    assertTrue(
+        config.getAllowedOriginPatterns().contains("http://localhost:4200"),
+        "Debe permitir el origen del Backoffice en desarrollo"
+    );
 
-    assertNotNull(config.getAllowedMethods());
+    assertTrue(
+        config.getAllowedOriginPatterns().contains("http://localhost:4300"),
+        "Debe permitir el origen del Portal en desarrollo"
+    );
+
+    assertNotNull(
+        config.getAllowedMethods(),
+        "Los métodos HTTP permitidos deben estar configurados"
+    );
+
     assertTrue(config.getAllowedMethods().contains("GET"));
     assertTrue(config.getAllowedMethods().contains("POST"));
     assertTrue(config.getAllowedMethods().contains("PUT"));
@@ -37,16 +63,36 @@ class CorsIntegrationTest {
     assertTrue(config.getAllowedMethods().contains("DELETE"));
     assertTrue(config.getAllowedMethods().contains("OPTIONS"));
 
-    assertNotNull(config.getAllowedHeaders());
+    assertNotNull(
+        config.getAllowedHeaders(),
+        "Los headers permitidos deben estar configurados"
+    );
 
-    boolean permiteAuthorization =
+    assertTrue(
         config.getAllowedHeaders().contains("Authorization")
-        || config.getAllowedHeaders().contains("*");
-    boolean permiteContentType =
-        config.getAllowedHeaders().contains("Content-Type")
-        || config.getAllowedHeaders().contains("*");
+            || config.getAllowedHeaders().contains("*"),
+        "Debe permitirse el header Authorization"
+    );
 
-    assertTrue(permiteAuthorization);
-    assertTrue(permiteContentType);
+    assertTrue(
+        config.getAllowedHeaders().contains("Content-Type")
+            || config.getAllowedHeaders().contains("*"),
+        "Debe permitirse el header Content-Type"
+    );
+
+    assertTrue(
+        Boolean.TRUE.equals(config.getAllowCredentials()),
+        "CORS debe permitir credenciales"
+    );
+
+    assertNotNull(
+        config.getMaxAge(),
+        "Debe existir un tiempo máximo de caché para preflight"
+    );
+
+    assertTrue(
+        config.getMaxAge() > 0,
+        "El max-age de CORS debe ser mayor que cero"
+    );
   }
 }
