@@ -2,6 +2,7 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
@@ -14,87 +15,134 @@
   <groupId>com.reparasuite</groupId>
   <artifactId>reparasuite-api</artifactId>
   <version>0.0.1-SNAPSHOT</version>
+
   <name>reparasuite-api</name>
   <description>Backend API de ReparaSuite</description>
 
   <properties>
     <java.version>21</java.version>
+
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+    <!--
+      Mockito se utiliza también como Java Agent durante las pruebas.
+      La versión queda centralizada para mantener sincronizadas
+      la dependencia y la configuración del agente.
+    -->
     <mockito.version>5.23.0</mockito.version>
+
+    <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
   </properties>
 
+
   <dependencies>
-    <!-- Web / MVC -->
+
+    <!-- ========================================================= -->
+    <!-- WEB / MVC                                                 -->
+    <!-- ========================================================= -->
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-webmvc</artifactId>
     </dependency>
 
-    <!-- Seguridad -->
+
+    <!-- ========================================================= -->
+    <!-- SEGURIDAD                                                 -->
+    <!-- ========================================================= -->
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-security</artifactId>
     </dependency>
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
     </dependency>
 
-    <!-- Validación -->
+
+    <!-- ========================================================= -->
+    <!-- VALIDACIÓN                                                -->
+    <!-- ========================================================= -->
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-validation</artifactId>
     </dependency>
 
-    <!-- JPA -->
+
+    <!-- ========================================================= -->
+    <!-- PERSISTENCIA / JPA                                        -->
+    <!-- ========================================================= -->
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-data-jpa</artifactId>
     </dependency>
 
+
     <!-- PostgreSQL -->
+
     <dependency>
       <groupId>org.postgresql</groupId>
       <artifactId>postgresql</artifactId>
       <scope>runtime</scope>
     </dependency>
 
+
     <!-- Flyway -->
+
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-core</artifactId>
     </dependency>
+
     <dependency>
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-database-postgresql</artifactId>
     </dependency>
 
-    <!-- Actuator -->
+
+    <!-- ========================================================= -->
+    <!-- OBSERVABILIDAD                                            -->
+    <!-- ========================================================= -->
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
 
-    <!-- OpenAPI -->
+
+    <!-- ========================================================= -->
+    <!-- OPENAPI                                                   -->
+    <!-- ========================================================= -->
+
     <dependency>
       <groupId>org.springdoc</groupId>
       <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
       <version>3.0.2</version>
     </dependency>
 
-    <!-- JWT -->
+
+    <!-- ========================================================= -->
+    <!-- JWT                                                       -->
+    <!-- ========================================================= -->
+
     <dependency>
       <groupId>io.jsonwebtoken</groupId>
       <artifactId>jjwt-api</artifactId>
       <version>0.12.6</version>
     </dependency>
+
     <dependency>
       <groupId>io.jsonwebtoken</groupId>
       <artifactId>jjwt-impl</artifactId>
       <version>0.12.6</version>
       <scope>runtime</scope>
     </dependency>
+
     <dependency>
       <groupId>io.jsonwebtoken</groupId>
       <artifactId>jjwt-jackson</artifactId>
@@ -102,74 +150,185 @@
       <scope>runtime</scope>
     </dependency>
 
-    <!-- TEST -->
+
+    <!-- ========================================================= -->
+    <!-- TESTING                                                   -->
+    <!-- ========================================================= -->
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-webmvc-test</artifactId>
       <scope>test</scope>
     </dependency>
+
     <dependency>
       <groupId>org.springframework.security</groupId>
       <artifactId>spring-security-test</artifactId>
       <scope>test</scope>
     </dependency>
+
     <dependency>
       <groupId>com.h2database</groupId>
       <artifactId>h2</artifactId>
       <scope>test</scope>
     </dependency>
 
-    <!-- Mockito -->
+    <!--
+      Dependencia explícita porque el mismo JAR se utiliza
+      como Java Agent durante la ejecución de las pruebas.
+    -->
     <dependency>
       <groupId>org.mockito</groupId>
       <artifactId>mockito-core</artifactId>
       <version>${mockito.version}</version>
       <scope>test</scope>
     </dependency>
+
   </dependencies>
 
+
   <build>
+
     <plugins>
+
+      <!-- ======================================================= -->
+      <!-- SPRING BOOT                                             -->
+      <!-- ======================================================= -->
+
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
       </plugin>
 
+
+      <!-- ======================================================= -->
+      <!-- PREPARACIÓN DEL AGENTE DE MOCKITO                       -->
+      <!-- ======================================================= -->
+
+      <!--
+        No se ejecuta Mockito directamente desde ~/.m2.
+
+        En Windows la carpeta del usuario puede contener espacios
+        (por ejemplo "Gledys Palma"), lo que vuelve frágil el
+        argumento -javaagent.
+
+        Maven copia primero el JAR a target/test-agents.
+        De esta forma la configuración es reproducible en cualquier
+        equipo y no depende de la ubicación del repositorio local.
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+
+        <executions>
+          <execution>
+            <id>prepare-mockito-java-agent</id>
+
+            <phase>process-test-classes</phase>
+
+            <goals>
+              <goal>copy</goal>
+            </goals>
+
+            <configuration>
+              <artifactItems>
+
+                <artifactItem>
+                  <groupId>org.mockito</groupId>
+                  <artifactId>mockito-core</artifactId>
+                  <version>${mockito.version}</version>
+                  <type>jar</type>
+
+                  <outputDirectory>
+                    ${project.build.directory}/test-agents
+                  </outputDirectory>
+
+                  <destFileName>
+                    mockito-core.jar
+                  </destFileName>
+                </artifactItem>
+
+              </artifactItems>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+
+      <!-- ======================================================= -->
+      <!-- TEST RUNNER                                             -->
+      <!-- ======================================================= -->
+
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-surefire-plugin</artifactId>
-        <version>3.5.4</version>
+        <version>${maven-surefire-plugin.version}</version>
+
         <configuration>
+
+          <!--
+            Se carga Mockito como agente desde target, evitando
+            rutas dependientes del usuario y problemas con espacios.
+
+            Las comillas mantienen además la ejecución segura si en
+            el futuro la ruta del proyecto contiene espacios.
+          -->
           <argLine>
-            -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+            -javaagent:"${project.build.directory}/test-agents/mockito-core.jar"
           </argLine>
+
         </configuration>
       </plugin>
+
+
+      <!-- ======================================================= -->
+      <!-- FLYWAY                                                  -->
+      <!-- ======================================================= -->
 
       <plugin>
         <groupId>org.flywaydb</groupId>
         <artifactId>flyway-maven-plugin</artifactId>
+
         <configuration>
-          <url>jdbc:postgresql://localhost:5432/reparasuite</url>
-          <user>postgres</user>
-          <password>123456</password>
+
+          <!--
+            Las credenciales NO se almacenan en el pom.xml.
+
+            Para ejecutar Flyway manualmente deben suministrarse
+            mediante propiedades Maven o configuración externa:
+
+            -Dflyway.url=...
+            -Dflyway.user=...
+            -Dflyway.password=...
+          -->
+
           <schemas>
             <schema>public</schema>
           </schemas>
+
           <defaultSchema>public</defaultSchema>
+
           <locations>
-            <location>filesystem:src/main/resources/db/migration</location>
+            <location>
+              filesystem:src/main/resources/db/migration
+            </location>
           </locations>
+
           <baselineOnMigrate>true</baselineOnMigrate>
           <baselineVersion>1</baselineVersion>
           <validateOnMigrate>true</validateOnMigrate>
+
         </configuration>
       </plugin>
+
     </plugins>
+
   </build>
+
 </project>
